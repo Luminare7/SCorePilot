@@ -83,10 +83,11 @@
             </div>
             <div class="card-body">
                 <div id="osmdCanvas" class="score-visualization">
-                    <div class="visualization-loading">
-                        <div class="spinner-border text-primary" role="status">
+                    <div class="visualization-loading text-center">
+                        <div class="spinner-border text-primary mb-2" role="status">
                             <span class="visually-hidden">Loading visualization...</span>
                         </div>
+                        <p class="text-muted">Loading score visualization...</p>
                     </div>
                 </div>
             </div>
@@ -118,35 +119,46 @@
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.7.1/build/opensheetmusicdisplay.min.js"></script>
 
 <script>
-    // Initialize OSMD
+    const LOAD_TIMEOUT = 10000; // 10 seconds timeout
+
+    // Create timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Loading timeout')), LOAD_TIMEOUT);
+    });
+
+    // Initialize OSMD with options
     var osmd = new OpenSheetMusicDisplay("osmdCanvas", {
         autoResize: true,
         drawTitle: true,
         drawSubtitle: true,
         drawComposer: true,
-        drawLyricist: true
+        drawLyricist: true,
+        backend: "svg"  // Try SVG backend for better performance
     });
-    
-    // Load and render the MusicXML
-    fetch('/get_musicxml')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Score not available');
-            }
-            return response.text();
-        })
-        .then(xml => {
-            return osmd.load(xml);
-        })
-        .then(() => {
-            osmd.render();
-            document.querySelector('.visualization-loading').style.display = 'none';
-        })
-        .catch(error => {
-            console.error('Error loading score:', error);
-            document.getElementById('osmdCanvas').innerHTML = 
-                '<div class="alert alert-warning mt-3">Unable to render score visualization. The score might be too complex or use unsupported notation features.</div>';
-            document.querySelector('.visualization-loading').style.display = 'none';
-        });
+
+    // Race between loading and timeout
+    Promise.race([
+        fetch('/get_musicxml')
+            .then(response => {
+                if (!response.ok) throw new Error('Score not available');
+                return response.text();
+            })
+            .then(xml => osmd.load(xml))
+            .then(() => {
+                osmd.render();
+                document.querySelector('.visualization-loading').style.display = 'none';
+            }),
+        timeoutPromise
+    ])
+    .catch(error => {
+        console.error('Visualization error:', error);
+        document.getElementById('osmdCanvas').innerHTML = 
+            '<div class="alert alert-warning mt-3">' +
+            (error.message === 'Loading timeout' 
+                ? 'Score visualization is taking longer than expected. Please try refreshing the page.'
+                : 'Unable to render score visualization. The score might be too complex or use unsupported notation features.') +
+            '</div>';
+        document.querySelector('.visualization-loading').style.display = 'none';
+    });
 </script>
 {% endblock %}
