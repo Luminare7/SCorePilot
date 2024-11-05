@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, flash, redirect, url_for, sen
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer
 import io
+import xml.etree.ElementTree as ET
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -12,9 +13,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = "harmony_checker_secret_key"  # Required for flash messages
 
-# Configure upload folder
+# Configure upload settings
 UPLOAD_FOLDER = 'tmp'
 ALLOWED_EXTENSIONS = {'musicxml', 'xml'}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
 
 # Ensure upload and visualization directories exist
 for directory in [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]:
@@ -22,6 +24,7 @@ for directory in [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]:
         os.makedirs(directory)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # Flask will automatically reject larger files
 
 # Initialize the global analyzer
 current_analyzer = None
@@ -29,68 +32,100 @@ current_analyzer = None
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def is_valid_musicxml(file_path):
+    """Validate if the file is a well-formed MusicXML file"""
+    try:
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        # Check for basic MusicXML structure
+        return 'score-partwise' in root.tag or 'score-timewise' in root.tag
+    except ET.ParseError:
+        return False
+    except Exception as e:
+        logger.error(f"Error validating MusicXML: {str(e)}")
+        return False
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         logger.debug("Processing file upload request")
         
+        # Check if the post request has the file part
         if 'file' not in request.files:
             logger.warning("No file part in request")
-            flash('No file selected', 'error')
+            flash('Please select a file to upload.', 'danger')
             return redirect(request.url)
             
         file = request.files['file']
+        
+        # Check if a file was selected
         if file.filename == '':
             logger.warning("No selected file")
-            flash('No file selected', 'error')
+            flash('No file selected. Please choose a MusicXML file to analyze.', 'danger')
             return redirect(request.url)
             
-        if file and allowed_file(file.filename):
+        # Check file extension
+        if not allowed_file(file.filename):
+            logger.warning(f"Invalid file type: {file.filename}")
+            flash('Invalid file type. Please upload a MusicXML file (.musicxml or .xml).', 'danger')
+            return redirect(request.url)
+            
+        try:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            logger.debug(f"Saving uploaded file to {filepath}")
+            file.save(filepath)
+            
+            # Validate MusicXML structure
+            if not is_valid_musicxml(filepath):
+                os.remove(filepath)
+                flash('The uploaded file appears to be invalid or corrupted. Please ensure it is a valid MusicXML file.', 'danger')
+                return redirect(request.url)
+            
+            logger.debug("Initializing HarmonyAnalyzer")
+            analyzer = HarmonyAnalyzer()
+            
+            logger.debug("Loading score file")
             try:
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                logger.debug(f"Saving uploaded file to {filepath}")
-                file.save(filepath)
-                
-                logger.debug("Initializing HarmonyAnalyzer")
-                analyzer = HarmonyAnalyzer()
-                
-                logger.debug("Loading score file")
                 analyzer.load_score(filepath)
-                
-                logger.debug("Analyzing score")
+            except Exception as e:
+                os.remove(filepath)
+                flash(f'Error loading score: {str(e)}. Please ensure the file contains valid musical notation.', 'danger')
+                return redirect(request.url)
+            
+            logger.debug("Analyzing score")
+            try:
                 analysis_results = analyzer.analyze()
                 logger.debug(f"Analysis complete. Found {len(analysis_results)} issues")
-                
-                logger.debug("Generating report")
-                report = analyzer.generate_report()
-                
-                # Store analyzer in global variable for PDF generation
-                global current_analyzer
-                current_analyzer = analyzer
-                
-                # Get visualization path
-                visualization_path = analyzer.visualization_path
-                
-                # Clean up the uploaded file
-                logger.debug("Cleaning up uploaded file")
-                os.remove(filepath)
-                
-                logger.debug("Rendering results template")
-                return render_template('results.html', 
-                                    results=analysis_results,
-                                    report=report,
-                                    has_errors=bool(analysis_results),
-                                    visualization_path=visualization_path)
-                                    
             except Exception as e:
-                logger.error(f"Error during analysis: {str(e)}", exc_info=True)
-                flash(f'Error analyzing file: {str(e)}', 'error')
+                os.remove(filepath)
+                flash(f'Error analyzing score: {str(e)}. Please check if the score contains valid musical content.', 'danger')
                 return redirect(request.url)
-                
-        else:
-            logger.warning(f"Invalid file type: {file.filename}")
-            flash('Invalid file type. Please upload a MusicXML file.', 'error')
+            
+            logger.debug("Generating report")
+            report = analyzer.generate_report()
+            
+            # Store analyzer in global variable for PDF generation
+            global current_analyzer
+            current_analyzer = analyzer
+            
+            # Get visualization path
+            visualization_path = analyzer.visualization_path
+            
+            # Clean up the uploaded file
+            logger.debug("Cleaning up uploaded file")
+            os.remove(filepath)
+            
+            logger.debug("Rendering results template")
+            return render_template('results.html', 
+                                results=analysis_results,
+                                report=report,
+                                has_errors=bool(analysis_results),
+                                visualization_path=visualization_path)
+                                
+        except Exception as e:
+            logger.error(f"Error during analysis: {str(e)}", exc_info=True)
+            flash('An unexpected error occurred. Please try again or contact support if the problem persists.', 'danger')
             return redirect(request.url)
             
     return render_template('index.html')
@@ -102,7 +137,7 @@ def download_pdf():
         global current_analyzer
         if not current_analyzer:
             logger.error("No analyzer available for PDF generation")
-            flash('No analysis results available. Please analyze a score first.', 'error')
+            flash('No analysis results available. Please analyze a score first.', 'danger')
             return redirect(url_for('index'))
             
         logger.debug("Generating PDF report")
@@ -117,7 +152,7 @@ def download_pdf():
         )
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
-        flash('Error generating PDF report', 'error')
+        flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
         return redirect(url_for('index'))
 
 if __name__ == '__main__':
