@@ -171,20 +171,29 @@ class HarmonyAnalyzer:
             return
             
         try:
-            chords = self.score.chordify()
-            measures = chords.measures(0, None)
+            logger.debug("Starting chord progression analysis")
+            
+            # First try to get chords directly
+            chords = self.score.flatten().getElementsByClass('Chord')
+            logger.debug(f"Found {len(chords)} direct chords")
+            
+            # If no chords found, try to create them from the piano part
+            if not chords:
+                logger.debug("No direct chords found, attempting to chordify score")
+                chords = self.score.chordify().flatten().getElementsByClass('Chord')
+                logger.debug(f"Found {len(chords)} chords after chordifying")
             
             prev_chord = None
-            for measure in measures:
-                for chord_elem in measure.getElementsByClass('Chord'):
-                    if prev_chord:
-                        if self._is_dominant(prev_chord) and self._is_subdominant(chord_elem):
-                            self.errors.append({
-                                'type': 'Weak Progression',
-                                'measure': chord_elem.measureNumber,
-                                'description': 'V-IV progression detected'
-                            })
-                    prev_chord = chord_elem
+            for chord in chords:
+                if prev_chord:
+                    if self._is_dominant(prev_chord) and self._is_subdominant(chord):
+                        self.errors.append({
+                            'type': 'Weak Progression',
+                            'measure': chord.measureNumber,
+                            'description': 'V-IV progression detected'
+                        })
+                        logger.debug(f"Detected weak progression in measure {chord.measureNumber}")
+                prev_chord = chord
                     
         except Exception as e:
             logger.error(f"Error in chord progression check: {str(e)}", exc_info=True)
@@ -196,17 +205,19 @@ class HarmonyAnalyzer:
             return
             
         try:
-            chords = self.score.chordify()
-            measures = chords.measures(0, None)
+            # First try to get chords directly
+            chords = self.score.flatten().getElementsByClass('Chord')
             
-            final_chords = []
-            for m in measures[-2:]:
-                for chord_elem in m.getElementsByClass('Chord'):
-                    final_chords.append(chord_elem)
+            # If no chords found, try to create them from the piano part
+            if not chords:
+                chords = self.score.chordify().flatten().getElementsByClass('Chord')
+            
+            # Get the last two chords
+            final_chords = list(chords)[-2:]
             
             if len(final_chords) >= 2:
-                penultimate = final_chords[-2]
-                final = final_chords[-1]
+                penultimate = final_chords[0]
+                final = final_chords[1]
                 
                 if not self._is_valid_cadence(penultimate, final):
                     self.errors.append({
