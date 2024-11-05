@@ -8,7 +8,8 @@ import io
 import logging
 import os
 import uuid
-from PIL import Image
+import matplotlib
+matplotlib.use('Agg')  # Set backend before importing pyplot
 
 logger = logging.getLogger(__name__)
 
@@ -30,117 +31,48 @@ class HarmonyAnalyzer:
             raise Exception(f"Failed to load score: {str(e)}")
             
     def generate_visualization(self):
-        """Generates visual representation of the score using multiple methods"""
         try:
             if not self.score:
-                logger.warning("No score loaded for visualization")
                 return None
                 
             vis_dir = os.path.join('static', 'visualizations')
             os.makedirs(vis_dir, exist_ok=True)
-            os.chmod(vis_dir, 0o755)  # Set directory permissions
             
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            # Configure environment for visualization
-            us = environment.UserSettings()
-            us['musicxmlPath'] = '/usr/bin/musescore'  # Default path for MuseScore
-            us['musescoreDirectPNGPath'] = '/usr/bin/musescore'
-            
-            visualization_methods = [
-                self._visualize_with_show,
-                self._visualize_with_write,
-                self._visualize_with_lily,
-                self._visualize_parts,
-                self._visualize_piano_roll
-            ]
-            
-            for method in visualization_methods:
-                try:
-                    success = method(filepath)
-                    if success and os.path.exists(filepath):
-                        os.chmod(filepath, 0o644)  # Set file permissions
-                        self._optimize_image(filepath)
-                        logger.debug(f"Successfully generated visualization using {method.__name__}")
-                        return os.path.join('visualizations', filename)
-                except Exception as e:
-                    logger.warning(f"Visualization method {method.__name__} failed: {e}")
-                    continue
-            
-            logger.error("All visualization methods failed")
+            # Method 1: Try using graph.plot
+            try:
+                plot = graph.plot.PlotScore(self.score)
+                plot.run()
+                plot.figure.savefig(filepath)
+                return os.path.join('visualizations', filename)
+            except Exception as e1:
+                logger.debug(f"PlotScore failed: {e1}")
+                
+            # Method 2: Try basic notation plot
+            try:
+                plot = graph.plot.ScoreHorizontalBar(self.score)
+                plot.run()
+                plot.figure.savefig(filepath)
+                return os.path.join('visualizations', filename)
+            except Exception as e2:
+                logger.debug(f"ScoreHorizontalBar failed: {e2}")
+                
+            # Method 3: Try piano roll visualization
+            try:
+                plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
+                plot.run()
+                plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
+                return os.path.join('visualizations', filename)
+            except Exception as e3:
+                logger.debug(f"HorizontalBarPitchSpaceOffset failed: {e3}")
+                
             return None
             
         except Exception as e:
-            logger.error(f"Visualization generation failed: {str(e)}")
+            logger.error(f"All visualization methods failed: {str(e)}")
             return None
-    
-    def _optimize_image(self, filepath):
-        """Optimize the generated image for web display"""
-        try:
-            with Image.open(filepath) as img:
-                # Convert to RGB if necessary
-                if img.mode in ('RGBA', 'P'):
-                    img = img.convert('RGB')
-                
-                # Resize if too large while maintaining aspect ratio
-                max_size = (1200, 800)
-                if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
-                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                
-                # Optimize and save
-                img.save(filepath, 'PNG', optimize=True, quality=85)
-        except Exception as e:
-            logger.warning(f"Image optimization failed: {e}")
-    
-    def _visualize_with_show(self, filepath):
-        """Attempt visualization using score.show()"""
-        try:
-            self.score.show('musicxml.png', fp=filepath)
-            return True
-        except:
-            return False
-    
-    def _visualize_with_write(self, filepath):
-        """Attempt visualization using score.write()"""
-        try:
-            self.score.write('musicxml.png', fp=filepath)
-            return True
-        except:
-            return False
-    
-    def _visualize_with_lily(self, filepath):
-        """Attempt visualization using LilyPond if available"""
-        try:
-            self.score.write('lily.png', fp=filepath)
-            return True
-        except:
-            return False
-    
-    def _visualize_parts(self, filepath):
-        """Visualize individual parts if full score fails"""
-        try:
-            if len(self.score.parts) > 0:
-                # Create a new score with just the first few parts
-                display_score = stream.Score()
-                for part in self.score.parts[:3]:  # Show up to 3 parts
-                    display_score.append(part)
-                display_score.write('musicxml.png', fp=filepath)
-                return True
-            return False
-        except:
-            return False
-    
-    def _visualize_piano_roll(self, filepath):
-        """Create a piano roll visualization as a last resort"""
-        try:
-            # Convert score to piano roll representation
-            plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
-            plot.run()
-            plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
-            return True
-        except:
-            return False
 
     def analyze(self):
         """Performs complete analysis of the score"""
@@ -366,7 +298,6 @@ class HarmonyAnalyzer:
             styles = getSampleStyleSheet()
             story = []
 
-            # Title
             title_style = ParagraphStyle(
                 'CustomTitle',
                 parent=styles['Heading1'],
@@ -376,12 +307,10 @@ class HarmonyAnalyzer:
             story.append(Paragraph("Harmony Analysis Report", title_style))
             story.append(Spacer(1, 12))
 
-            # Error Summary
             story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
             story.append(Spacer(1, 12))
 
             if self.errors:
-                # Detailed Errors
                 story.append(Paragraph("Detailed Errors:", styles['Heading2']))
                 story.append(Spacer(1, 12))
 
@@ -394,7 +323,6 @@ class HarmonyAnalyzer:
                     story.append(Paragraph(error_text, styles['Normal']))
                     story.append(Spacer(1, 12))
 
-                # Statistics Table
                 report = self.generate_report()
                 stats_data = [
                     ['Statistic', 'Value'],
@@ -421,7 +349,6 @@ class HarmonyAnalyzer:
                 ]))
                 story.append(table)
 
-                # Corrections
                 story.append(Spacer(1, 20))
                 story.append(Paragraph("Suggested Corrections:", styles['Heading2']))
                 story.append(Spacer(1, 12))
