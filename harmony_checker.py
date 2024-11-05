@@ -35,47 +35,46 @@ class HarmonyAnalyzer:
                 logger.warning("No score loaded for visualization")
                 return None
                 
-            # Ensure directory exists with proper permissions
             vis_dir = os.path.join('static', 'visualizations')
             os.makedirs(vis_dir, exist_ok=True)
             os.chmod(vis_dir, 0o755)  # Set directory permissions
             
-            # Generate unique filename
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
             # Try different visualization methods
             try:
-                # Method 1: Direct PNG export
-                logger.debug("Attempting direct PNG export")
-                self.score.write('png', fp=filepath)
+                logger.debug("Attempting score.show() method")
+                self.score.show('musicxml.png', fp=filepath)
+                logger.debug("score.show() method succeeded")
             except Exception as e1:
-                logger.warning(f"Direct PNG export failed: {e1}")
+                logger.debug(f"show() method failed: {e1}")
                 try:
-                    # Method 2: Convert to stream first
-                    logger.debug("Attempting stream-based PNG export")
-                    flattened = self.score.flatten()
-                    flattened.write('png', fp=filepath)
+                    logger.debug("Attempting score.write() method")
+                    self.score.write('musicxml.png', fp=filepath)
+                    logger.debug("score.write() method succeeded")
                 except Exception as e2:
-                    logger.warning(f"Stream PNG export failed: {e2}")
+                    logger.debug(f"write() method failed: {e2}")
                     try:
-                        # Method 3: Try specific part visualization
-                        logger.debug("Attempting part-based visualization")
-                        for part in self.score.parts:
-                            part.write('png', fp=filepath)
-                            if os.path.exists(filepath):
-                                break
+                        logger.debug("Attempting alternative visualization method")
+                        # Try to get the first part or measure if available
+                        if len(self.score.parts) > 0:
+                            self.score.parts[0].write('musicxml.png', fp=filepath)
+                        else:
+                            self.score.measures(0, None).write('musicxml.png', fp=filepath)
+                        logger.debug("Alternative visualization method succeeded")
                     except Exception as e3:
                         logger.error(f"All visualization methods failed: {e3}")
                         return None
-                
-            # Verify file exists and is readable
+
             if os.path.exists(filepath):
                 os.chmod(filepath, 0o644)  # Set file permissions
                 logger.debug(f"Successfully generated visualization at {filepath}")
                 return os.path.join('visualizations', filename)
-                
+            
+            logger.warning("Visualization file was not created")
             return None
+            
         except Exception as e:
             logger.error(f"Visualization generation failed: {str(e)}")
             return None
