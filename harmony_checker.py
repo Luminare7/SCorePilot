@@ -88,6 +88,53 @@ class HarmonyAnalyzer:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)
             raise Exception(f"Analysis failed: {str(e)}")
 
+    def check_voice_leading(self):
+        """Checks voice leading rules"""
+        if not self.score:
+            return
+            
+        try:
+            parts = self.score.parts
+            for part_idx, part in enumerate(parts):
+                notes = part.flatten().notes
+                for i in range(len(notes) - 1):
+                    try:
+                        # Handle both Note and Chord objects
+                        current_pitch = notes[i].pitch if hasattr(notes[i], 'pitch') else notes[i].root()
+                        next_pitch = notes[i+1].pitch if hasattr(notes[i+1], 'pitch') else notes[i+1].root()
+                        
+                        # Check for large leaps
+                        interval_obj = interval.Interval(noteStart=note.Note(current_pitch), 
+                                                      noteEnd=note.Note(next_pitch))
+                        interval_size = abs(interval_obj.semitones)
+                        
+                        if interval_size > 12:  # Larger than an octave
+                            self.errors.append({
+                                'type': 'Large Leap',
+                                'measure': notes[i].measureNumber,
+                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
+                            })
+                            
+                        # Check for voice crossing with next lower voice
+                        if part_idx < len(parts) - 1:
+                            lower_voice = parts[part_idx + 1].flatten().notes
+                            if i < len(lower_voice):
+                                lower_pitch = lower_voice[i].pitch if hasattr(lower_voice[i], 'pitch') else lower_voice[i].root()
+                                if current_pitch < lower_pitch:
+                                    self.errors.append({
+                                        'type': 'Voice Crossing',
+                                        'measure': notes[i].measureNumber,
+                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
+                                    })
+                                    
+                    except Exception as e:
+                        logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            logger.error(f"Error in voice leading check: {str(e)}", exc_info=True)
+
+    # [Rest of the class implementation remains the same...]
     def check_parallel_fifths(self):
         """Checks for parallel fifths between voices"""
         if not self.score:
@@ -153,46 +200,6 @@ class HarmonyAnalyzer:
                     
         except Exception as e:
             logger.error(f"Error in parallel octaves check: {str(e)}", exc_info=True)
-
-    def check_voice_leading(self):
-        """Checks voice leading rules"""
-        if not self.score:
-            return
-            
-        try:
-            parts = self.score.parts
-            for part_idx, part in enumerate(parts):
-                notes = part.flatten().notes
-                for i in range(len(notes) - 1):
-                    try:
-                        # Check for large leaps
-                        interval_obj = interval.Interval(noteStart=notes[i], noteEnd=notes[i+1])
-                        interval_size = abs(interval_obj.semitones)
-                        
-                        if interval_size > 12:  # Larger than an octave
-                            self.errors.append({
-                                'type': 'Large Leap',
-                                'measure': notes[i].measureNumber,
-                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
-                            })
-                            
-                        # Check for voice crossing with next lower voice
-                        if part_idx < len(parts) - 1:
-                            lower_voice = parts[part_idx + 1].flatten().notes
-                            if i < len(lower_voice):
-                                if notes[i].pitch < lower_voice[i].pitch:
-                                    self.errors.append({
-                                        'type': 'Voice Crossing',
-                                        'measure': notes[i].measureNumber,
-                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
-                                    })
-                                    
-                    except Exception as e:
-                        logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
-                        continue
-                        
-        except Exception as e:
-            logger.error(f"Error in voice leading check: {str(e)}", exc_info=True)
 
     def check_chord_progressions(self):
         """Analyzes chord progressions"""

@@ -11,4 +11,6 @@ dependencies = [
     "music21>=9.3.0",
     "reportlab>=4.2.5",
     "pillow>=11.0.0",
+    "matplotlib",
+    "numpy",
 ]
