@@ -5,10 +5,14 @@ from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer
 import io
 import xml.etree.ElementTree as ET
+from configure_music21 import configure_music21
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Configure music21 environment
+configure_music21()
 
 app = Flask(__name__)
 app.secret_key = "harmony_checker_secret_key"  # Required for flash messages
@@ -18,9 +22,10 @@ UPLOAD_FOLDER = 'tmp'
 ALLOWED_EXTENSIONS = {'musicxml', 'xml'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
 
-# Ensure upload directory exists
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Ensure required directories exist with proper permissions
+for directory in [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]:
+    os.makedirs(directory, exist_ok=True)
+    os.chmod(directory, 0o755)  # Ensure proper permissions
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # Flask will automatically reject larger files
@@ -53,7 +58,7 @@ def index():
         if 'file' not in request.files:
             logger.warning("No file part in request")
             flash('Please select a file to upload.', 'danger')
-            return redirect(request.url), 400
+            return redirect(request.url)
             
         file = request.files['file']
         
@@ -61,13 +66,13 @@ def index():
         if file.filename == '':
             logger.warning("No selected file")
             flash('No file selected. Please choose a MusicXML file to analyze.', 'danger')
-            return redirect(request.url), 400
+            return redirect(request.url)
             
         # Check file extension
         if not allowed_file(file.filename):
             logger.warning(f"Invalid file type: {file.filename}")
             flash('Invalid file type. Please upload a MusicXML file (.musicxml or .xml).', 'danger')
-            return redirect(request.url), 400
+            return redirect(request.url)
             
         try:
             filename = secure_filename(file.filename)
@@ -79,7 +84,7 @@ def index():
             if not is_valid_musicxml(filepath):
                 os.remove(filepath)
                 flash('The uploaded file appears to be invalid or corrupted. Please ensure it is a valid MusicXML file.', 'danger')
-                return redirect(request.url), 422
+                return redirect(request.url)
             
             logger.debug("Initializing HarmonyAnalyzer")
             analyzer = HarmonyAnalyzer()
@@ -90,7 +95,7 @@ def index():
             except Exception as e:
                 os.remove(filepath)
                 flash(f'Error loading score: {str(e)}. Please ensure the file contains valid musical notation.', 'danger')
-                return redirect(request.url), 422
+                return redirect(request.url)
             
             logger.debug("Analyzing score")
             try:
@@ -99,13 +104,15 @@ def index():
             except Exception as e:
                 os.remove(filepath)
                 flash(f'Error analyzing score: {str(e)}. Please check if the score contains valid musical content.', 'danger')
-                return redirect(request.url), 500
+                return redirect(request.url)
             
             logger.debug("Generating report")
             report = analyzer.generate_report()
 
             logger.debug("Generating visualization")
             visualization_path = analyzer.generate_visualization()
+            if not visualization_path:
+                flash('Warning: Could not generate score visualization.', 'warning')
             
             # Store analyzer in global variable for PDF generation
             global current_analyzer
@@ -120,12 +127,12 @@ def index():
                                 results=analysis_results,
                                 report=report,
                                 has_errors=bool(analysis_results),
-                                visualization_path=visualization_path), 200
+                                visualization_path=visualization_path)
                                 
         except Exception as e:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)
             flash('An unexpected error occurred. Please try again or contact support if the problem persists.', 'danger')
-            return redirect(request.url), 500
+            return redirect(request.url)
             
     return render_template('index.html')
 
@@ -137,7 +144,7 @@ def download_pdf():
         if not current_analyzer:
             logger.error("No analyzer available for PDF generation")
             flash('No analysis results available. Please analyze a score first.', 'danger')
-            return redirect(url_for('index')), 404
+            return redirect(url_for('index'))
             
         logger.debug("Generating PDF report")
         pdf_content = current_analyzer.generate_pdf_report()
@@ -148,27 +155,38 @@ def download_pdf():
             mimetype='application/pdf',
             as_attachment=True,
             download_name='harmony_analysis_report.pdf'
-        ), 200
+        )
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
         flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
-        return redirect(url_for('index')), 500
+        return redirect(url_for('index'))
 
-@app.route('/get_musicxml')
-def get_musicxml():
-    """Endpoint to serve MusicXML data for client-side visualization"""
-    logger.debug("Processing MusicXML data request")
+@app.route('/test_visualization')
+def test_visualization():
+    """Test endpoint to verify visualization capabilities"""
     try:
-        global current_analyzer
-        if not current_analyzer or not current_analyzer.score:
-            logger.error("No score available")
-            return 'No score available', 404
+        analyzer = HarmonyAnalyzer()
+        # Create a simple test score
+        from music21 import converter, note, stream
+        test_score = stream.Score()
+        part = stream.Part()
+        part.append(note.Note('C4', quarterLength=1.0))
+        part.append(note.Note('D4', quarterLength=1.0))
+        part.append(note.Note('E4', quarterLength=1.0))
+        part.append(note.Note('F4', quarterLength=1.0))
+        test_score.append(part)
+        
+        analyzer.score = test_score
+        visualization_path = analyzer.generate_visualization()
+        
+        if visualization_path:
+            return render_template('test_visualization.html', visualization_path=visualization_path)
+        else:
+            return "Failed to generate visualization", 500
             
-        musicxml_data = current_analyzer.score.write('musicxml')
-        return Response(musicxml_data, mimetype='application/xml')
     except Exception as e:
-        logger.error(f"Error serving MusicXML: {str(e)}")
-        return 'Error generating MusicXML', 500
+        logger.error(f"Error in test visualization: {str(e)}")
+        return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
