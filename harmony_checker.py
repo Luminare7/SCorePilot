@@ -8,6 +8,7 @@ import io
 import logging
 import os
 import uuid
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class HarmonyAnalyzer:
             raise Exception(f"Failed to load score: {str(e)}")
             
     def generate_visualization(self):
-        """Generates visual representation of the score"""
+        """Generates visual representation of the score using multiple methods"""
         try:
             if not self.score:
                 logger.warning("No score loaded for visualization")
@@ -42,42 +43,104 @@ class HarmonyAnalyzer:
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            # Try different visualization methods
-            try:
-                logger.debug("Attempting score.show() method")
-                self.score.show('musicxml.png', fp=filepath)
-                logger.debug("score.show() method succeeded")
-            except Exception as e1:
-                logger.debug(f"show() method failed: {e1}")
-                try:
-                    logger.debug("Attempting score.write() method")
-                    self.score.write('musicxml.png', fp=filepath)
-                    logger.debug("score.write() method succeeded")
-                except Exception as e2:
-                    logger.debug(f"write() method failed: {e2}")
-                    try:
-                        logger.debug("Attempting alternative visualization method")
-                        # Try to get the first part or measure if available
-                        if len(self.score.parts) > 0:
-                            self.score.parts[0].write('musicxml.png', fp=filepath)
-                        else:
-                            self.score.measures(0, None).write('musicxml.png', fp=filepath)
-                        logger.debug("Alternative visualization method succeeded")
-                    except Exception as e3:
-                        logger.error(f"All visualization methods failed: {e3}")
-                        return None
-
-            if os.path.exists(filepath):
-                os.chmod(filepath, 0o644)  # Set file permissions
-                logger.debug(f"Successfully generated visualization at {filepath}")
-                return os.path.join('visualizations', filename)
+            # Configure environment for visualization
+            us = environment.UserSettings()
+            us['musicxmlPath'] = '/usr/bin/musescore'  # Default path for MuseScore
+            us['musescoreDirectPNGPath'] = '/usr/bin/musescore'
             
-            logger.warning("Visualization file was not created")
+            visualization_methods = [
+                self._visualize_with_show,
+                self._visualize_with_write,
+                self._visualize_with_lily,
+                self._visualize_parts,
+                self._visualize_piano_roll
+            ]
+            
+            for method in visualization_methods:
+                try:
+                    success = method(filepath)
+                    if success and os.path.exists(filepath):
+                        os.chmod(filepath, 0o644)  # Set file permissions
+                        self._optimize_image(filepath)
+                        logger.debug(f"Successfully generated visualization using {method.__name__}")
+                        return os.path.join('visualizations', filename)
+                except Exception as e:
+                    logger.warning(f"Visualization method {method.__name__} failed: {e}")
+                    continue
+            
+            logger.error("All visualization methods failed")
             return None
             
         except Exception as e:
             logger.error(f"Visualization generation failed: {str(e)}")
             return None
+    
+    def _optimize_image(self, filepath):
+        """Optimize the generated image for web display"""
+        try:
+            with Image.open(filepath) as img:
+                # Convert to RGB if necessary
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                
+                # Resize if too large while maintaining aspect ratio
+                max_size = (1200, 800)
+                if img.size[0] > max_size[0] or img.size[1] > max_size[1]:
+                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                
+                # Optimize and save
+                img.save(filepath, 'PNG', optimize=True, quality=85)
+        except Exception as e:
+            logger.warning(f"Image optimization failed: {e}")
+    
+    def _visualize_with_show(self, filepath):
+        """Attempt visualization using score.show()"""
+        try:
+            self.score.show('musicxml.png', fp=filepath)
+            return True
+        except:
+            return False
+    
+    def _visualize_with_write(self, filepath):
+        """Attempt visualization using score.write()"""
+        try:
+            self.score.write('musicxml.png', fp=filepath)
+            return True
+        except:
+            return False
+    
+    def _visualize_with_lily(self, filepath):
+        """Attempt visualization using LilyPond if available"""
+        try:
+            self.score.write('lily.png', fp=filepath)
+            return True
+        except:
+            return False
+    
+    def _visualize_parts(self, filepath):
+        """Visualize individual parts if full score fails"""
+        try:
+            if len(self.score.parts) > 0:
+                # Create a new score with just the first few parts
+                display_score = stream.Score()
+                for part in self.score.parts[:3]:  # Show up to 3 parts
+                    display_score.append(part)
+                display_score.write('musicxml.png', fp=filepath)
+                return True
+            return False
+        except:
+            return False
+    
+    def _visualize_piano_roll(self, filepath):
+        """Create a piano roll visualization as a last resort"""
+        try:
+            # Convert score to piano roll representation
+            plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
+            plot.run()
+            plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
+            return True
+        except:
+            return False
 
     def analyze(self):
         """Performs complete analysis of the score"""

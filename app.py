@@ -54,7 +54,7 @@ def index():
         if 'file' not in request.files:
             logger.warning("No file part in request")
             flash('Please select a file to upload.', 'danger')
-            return redirect(request.url)
+            return redirect(request.url), 400
             
         file = request.files['file']
         
@@ -62,13 +62,13 @@ def index():
         if file.filename == '':
             logger.warning("No selected file")
             flash('No file selected. Please choose a MusicXML file to analyze.', 'danger')
-            return redirect(request.url)
+            return redirect(request.url), 400
             
         # Check file extension
         if not allowed_file(file.filename):
             logger.warning(f"Invalid file type: {file.filename}")
             flash('Invalid file type. Please upload a MusicXML file (.musicxml or .xml).', 'danger')
-            return redirect(request.url)
+            return redirect(request.url), 400
             
         try:
             filename = secure_filename(file.filename)
@@ -80,7 +80,7 @@ def index():
             if not is_valid_musicxml(filepath):
                 os.remove(filepath)
                 flash('The uploaded file appears to be invalid or corrupted. Please ensure it is a valid MusicXML file.', 'danger')
-                return redirect(request.url)
+                return redirect(request.url), 422
             
             logger.debug("Initializing HarmonyAnalyzer")
             analyzer = HarmonyAnalyzer()
@@ -91,7 +91,7 @@ def index():
             except Exception as e:
                 os.remove(filepath)
                 flash(f'Error loading score: {str(e)}. Please ensure the file contains valid musical notation.', 'danger')
-                return redirect(request.url)
+                return redirect(request.url), 422
             
             logger.debug("Analyzing score")
             try:
@@ -100,7 +100,7 @@ def index():
             except Exception as e:
                 os.remove(filepath)
                 flash(f'Error analyzing score: {str(e)}. Please check if the score contains valid musical content.', 'danger')
-                return redirect(request.url)
+                return redirect(request.url), 500
             
             logger.debug("Generating report")
             report = analyzer.generate_report()
@@ -121,12 +121,12 @@ def index():
                                 results=analysis_results,
                                 report=report,
                                 has_errors=bool(analysis_results),
-                                visualization_path=visualization_path)
+                                visualization_path=visualization_path), 200
                                 
         except Exception as e:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)
             flash('An unexpected error occurred. Please try again or contact support if the problem persists.', 'danger')
-            return redirect(request.url)
+            return redirect(request.url), 500
             
     return render_template('index.html')
 
@@ -138,7 +138,7 @@ def download_pdf():
         if not current_analyzer:
             logger.error("No analyzer available for PDF generation")
             flash('No analysis results available. Please analyze a score first.', 'danger')
-            return redirect(url_for('index'))
+            return redirect(url_for('index')), 404
             
         logger.debug("Generating PDF report")
         pdf_content = current_analyzer.generate_pdf_report()
@@ -149,11 +149,11 @@ def download_pdf():
             mimetype='application/pdf',
             as_attachment=True,
             download_name='harmony_analysis_report.pdf'
-        )
+        ), 200
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
         flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('index')), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
