@@ -28,29 +28,47 @@ class HarmonyAnalyzer:
             raise Exception(f"Failed to load score: {str(e)}")
 
     def analyze_score(self):
-        """Analyze the loaded score for harmony errors"""
         try:
             if not self.score:
                 raise ValueError("No score loaded for analysis")
             
             self.errors = []
-            # Perform harmony analysis
-            # Add your harmony analysis logic here
-            # For demonstration, we'll add some sample analysis
+            # Get all measures
             measures = self.score.measureOffsetMap()
-            for measure_num in measures:
-                # Example analysis - detect parallel fifths
-                # This is a simplified example
-                measure = self.score.measure(measure_num)
-                if measure:
-                    # Add sample error for demonstration
-                    if len(measure.notes) > 3:
-                        self.errors.append({
-                            'type': 'Potential Voice Leading Issue',
-                            'measure': measure_num,
-                            'description': 'Complex voice movement detected'
-                        })
+            measure_numbers = sorted(int(measure_num) for measure_num in measures.keys())
             
+            for measure_num in measure_numbers:
+                try:
+                    # Get measure content
+                    measure = self.score.measure(measure_num)
+                    if measure:
+                        # Analyze voice leading
+                        voices = list(measure.voices)
+                        if len(voices) > 1:
+                            for i in range(len(voices) - 1):
+                                for j in range(i + 1, len(voices)):
+                                    if len(voices[i].notes) > 3 and len(voices[j].notes) > 3:
+                                        self.errors.append({
+                                            'type': 'Voice Leading',
+                                            'measure': measure_num,
+                                            'description': f'Complex voice movement between voices {i+1} and {j+1}'
+                                        })
+                        
+                        # Check for parallel fifths
+                        chords = list(measure.getElementsByClass('Chord'))
+                        if len(chords) > 1:
+                            for i in range(len(chords) - 1):
+                                # Add basic harmony checks
+                                if len(chords[i].pitches) > 3:
+                                    self.errors.append({
+                                        'type': 'Chord Complexity',
+                                        'measure': measure_num,
+                                        'description': 'Complex chord structure detected'
+                                    })
+                except Exception as me:
+                    logger.debug(f"Error analyzing measure {measure_num}: {str(me)}")
+                    continue
+                    
             return self.errors
         except Exception as e:
             logger.error(f"Error in analysis: {str(e)}")
@@ -142,7 +160,6 @@ class BatchAnalyzer:
         self.files.append((filepath, filename))
 
     def analyze_all(self):
-        """Analyze all files in the batch"""
         batch_results = []
         
         for filepath, filename in self.files:
@@ -153,28 +170,30 @@ class BatchAnalyzer:
                 # Analyze the score
                 errors = analyzer.analyze_score()
                 
-                # Store results
-                self.results[filename] = {
-                    'errors': errors,
-                    'total_errors': len(errors)
-                }
-                
                 # Generate visualization
                 vis_path = analyzer.generate_visualization()
+                
+                # Store results
+                result = {
+                    'filename': filename,
+                    'errors': errors,
+                    'total_errors': len(errors),
+                    'visualization': vis_path,
+                    'status': 'success'
+                }
+                
+                self.results[filename] = result
                 if vis_path:
                     self.visualizations[filename] = vis_path
                 
-                batch_results.append({
-                    'filename': filename,
-                    'errors': errors,
-                    'visualization': vis_path
-                })
+                batch_results.append(result)
                 
             except Exception as e:
                 logger.error(f"Error analyzing {filename}: {str(e)}")
                 batch_results.append({
                     'filename': filename,
-                    'error': str(e)
+                    'error': str(e),
+                    'status': 'error'
                 })
         
         return batch_results
@@ -207,11 +226,12 @@ class BatchAnalyzer:
             elements.append(Spacer(1, 10))
 
             # Error summary
-            elements.append(Paragraph(f"Total Errors: {result['total_errors']}", styles['Normal']))
+            total_errors = result.get('total_errors', 0)
+            elements.append(Paragraph(f"Total Errors: {total_errors}", styles['Normal']))
             elements.append(Spacer(1, 10))
 
             # Detailed errors
-            if result['errors']:
+            if result.get('status') == 'success' and result.get('errors'):
                 # Create table for errors
                 error_data = [['Type', 'Measure', 'Description']]
                 for error in result['errors']:
@@ -236,6 +256,8 @@ class BatchAnalyzer:
                     ('GRID', (0, 0), (-1, -1), 1, colors.black)
                 ]))
                 elements.append(table)
+            elif result.get('status') == 'error':
+                elements.append(Paragraph(f"Error: {result.get('error', 'Unknown error')}", styles['Normal']))
             else:
                 elements.append(Paragraph("No errors found.", styles['Normal']))
 
