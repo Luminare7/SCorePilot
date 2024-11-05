@@ -83,11 +83,16 @@
             </div>
             <div class="card-body text-center">
                 {% if visualization_path %}
-                    <img src="{{ url_for('static', filename=visualization_path) }}" 
-                         alt="Score Visualization" 
-                         class="img-fluid"
-                         style="max-width: 100%; height: auto;"
-                         onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.alt='Score visualization unavailable';">
+                    <div class="score-visualization">
+                        <img src="{{ url_for('static', filename=visualization_path) }}" 
+                             alt="Musical score visualization" 
+                             class="img-fluid score-image"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.classList.add('visualization-error'); this.alt='Score visualization unavailable';">
+                        <div class="visualization-error-message d-none alert alert-warning mt-3">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Unable to load score visualization. Using placeholder image.
+                        </div>
+                    </div>
                 {% else %}
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
@@ -97,9 +102,29 @@
             </div>
         </div>
         
-        <div class="text-center">
+        <div class="text-center mb-4">
             <a href="{{ url_for('index') }}" class="btn btn-secondary">Analyze Another Score</a>
         </div>
     </div>
 </div>
+
+<style>
+.score-visualization {
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.score-image {
+    max-width: 100%;
+    height: auto;
+}
+
+.visualization-error {
+    opacity: 0.7;
+}
+
+.visualization-error + .visualization-error-message {
+    display: block !important;
+}
+</style>
 {% endblock %}
