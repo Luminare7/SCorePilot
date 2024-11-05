@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, render_template, request, flash, redirect, url_for, send_file, Response
 from werkzeug.utils import secure_filename
-from harmony_checker import HarmonyAnalyzer
+from harmony_checker import HarmonyAnalyzer, BatchAnalyzer
 import io
 import xml.etree.ElementTree as ET
 from configure_music21 import configure_music21
@@ -55,84 +55,70 @@ def index():
         logger.debug("Processing file upload request")
         
         # Check if the post request has the file part
-        if 'file' not in request.files:
-            logger.warning("No file part in request")
-            flash('Please select a file to upload.', 'danger')
+        if 'files[]' not in request.files:
+            logger.warning("No files part in request")
+            flash('Please select files to upload.', 'danger')
             return redirect(request.url)
             
-        file = request.files['file']
+        files = request.files.getlist('files[]')
         
-        # Check if a file was selected
-        if file.filename == '':
-            logger.warning("No selected file")
-            flash('No file selected. Please choose a MusicXML file to analyze.', 'danger')
+        # Check if files were selected
+        if not files or all(file.filename == '' for file in files):
+            logger.warning("No selected files")
+            flash('No files selected. Please choose MusicXML files to analyze.', 'danger')
             return redirect(request.url)
-            
-        # Check file extension
-        if not allowed_file(file.filename):
-            logger.warning(f"Invalid file type: {file.filename}")
-            flash('Invalid file type. Please upload a MusicXML file (.musicxml or .xml).', 'danger')
-            return redirect(request.url)
-            
-        try:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            logger.debug(f"Saving uploaded file to {filepath}")
-            file.save(filepath)
-            
-            # Validate MusicXML structure
-            if not is_valid_musicxml(filepath):
-                os.remove(filepath)
-                flash('The uploaded file appears to be invalid or corrupted. Please ensure it is a valid MusicXML file.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Initializing HarmonyAnalyzer")
-            analyzer = HarmonyAnalyzer()
-            
-            logger.debug("Loading score file")
-            try:
-                analyzer.load_score(filepath)
-            except Exception as e:
-                os.remove(filepath)
-                flash(f'Error loading score: {str(e)}. Please ensure the file contains valid musical notation.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Analyzing score")
-            try:
-                analysis_results = analyzer.analyze()
-                logger.debug(f"Analysis complete. Found {len(analysis_results)} issues")
-            except Exception as e:
-                os.remove(filepath)
-                flash(f'Error analyzing score: {str(e)}. Please check if the score contains valid musical content.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Generating report")
-            report = analyzer.generate_report()
 
-            logger.debug("Generating visualization")
-            visualization_path = analyzer.generate_visualization()
-            if not visualization_path:
-                flash('Warning: Could not generate score visualization.', 'warning')
+        # Initialize batch analyzer
+        batch_analyzer = BatchAnalyzer()
+        saved_files = []
+
+        try:
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    logger.debug(f"Saving uploaded file to {filepath}")
+                    file.save(filepath)
+                    saved_files.append(filepath)
+
+                    # Validate MusicXML structure
+                    if not is_valid_musicxml(filepath):
+                        raise ValueError(f"Invalid or corrupted MusicXML file: {filename}")
+
+                    # Add file to batch analysis
+                    batch_analyzer.add_file(filepath, filename)
+                else:
+                    raise ValueError(f"Invalid file type: {file.filename}")
+
+            # Perform batch analysis
+            logger.debug("Starting batch analysis")
+            batch_results = batch_analyzer.analyze_all()
             
-            # Store analyzer in global variable for PDF generation
+            # Generate visualizations
+            visualization_paths = batch_analyzer.generate_visualizations()
+
+            # Store analyzer for PDF generation
             global current_analyzer
-            current_analyzer = analyzer
-            
-            # Clean up the uploaded file
-            logger.debug("Cleaning up uploaded file")
-            os.remove(filepath)
-            
+            current_analyzer = batch_analyzer
+
             logger.debug("Rendering results template")
-            return render_template('results.html', 
-                                results=analysis_results,
-                                report=report,
-                                has_errors=bool(analysis_results),
-                                visualization_path=visualization_path)
-                                
+            return render_template('results.html',
+                                batch_results=batch_results,
+                                visualization_paths=visualization_paths)
+
         except Exception as e:
-            logger.error(f"Error during analysis: {str(e)}", exc_info=True)
-            flash('An unexpected error occurred. Please try again or contact support if the problem persists.', 'danger')
-            return redirect(request.url)
+            logger.error(f"Error during batch analysis: {str(e)}", exc_info=True)
+            flash(str(e), 'danger')
+        finally:
+            # Clean up uploaded files
+            for filepath in saved_files:
+                try:
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                except Exception as e:
+                    logger.error(f"Error removing file {filepath}: {str(e)}")
+
+        return redirect(request.url)
             
     return render_template('index.html')
 
@@ -143,7 +129,7 @@ def download_pdf():
         global current_analyzer
         if not current_analyzer:
             logger.error("No analyzer available for PDF generation")
-            flash('No analysis results available. Please analyze a score first.', 'danger')
+            flash('No analysis results available. Please analyze scores first.', 'danger')
             return redirect(url_for('index'))
             
         logger.debug("Generating PDF report")
@@ -158,7 +144,7 @@ def download_pdf():
         )
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
-        flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
+        flash('Error generating PDF report. Please try analyzing the scores again.', 'danger')
         return redirect(url_for('index'))
 
 @app.route('/test_visualization')

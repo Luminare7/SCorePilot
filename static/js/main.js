@@ -1,17 +1,18 @@
 document.addEventListener('DOMContentLoaded', function() {
     // File input validation
-    const fileInput = document.getElementById('file');
+    const fileInput = document.getElementById('files');
     if (fileInput) {
         fileInput.addEventListener('change', function() {
+            updateSelectedFilesList(this);
             validateFileInput(this);
         });
     }
 });
 
 function validateForm() {
-    const fileInput = document.getElementById('file');
+    const fileInput = document.getElementById('files');
     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        showError('Please select a file to upload');
+        showError('Please select at least one file to upload');
         return false;
     }
 
@@ -22,21 +23,53 @@ function validateForm() {
     return true;
 }
 
-function validateFileInput(input) {
-    const file = input.files[0];
-    if (!file) return false;
+function updateSelectedFilesList(input) {
+    const selectedFilesDiv = document.getElementById('selectedFiles');
+    if (!selectedFilesDiv) return;
 
-    // Check file extension
-    const extension = file.name.split('.').pop().toLowerCase();
-    if (!['musicxml', 'xml'].includes(extension)) {
-        showError('Please select a valid MusicXML file (.musicxml or .xml)');
-        input.value = '';
-        return false;
+    let html = '<div class="list-group mt-3">';
+    for (let i = 0; i < input.files.length; i++) {
+        const file = input.files[i];
+        html += `<div class="list-group-item d-flex justify-content-between align-items-center">
+            <span>${file.name}</span>
+            <span class="badge bg-primary rounded-pill">${formatFileSize(file.size)}</span>
+        </div>`;
+    }
+    html += '</div>';
+    selectedFilesDiv.innerHTML = html;
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function validateFileInput(input) {
+    const files = input.files;
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    let hasErrors = false;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // Check file extension
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!['musicxml', 'xml'].includes(extension)) {
+            showError(`Invalid file type: ${file.name}. Please select only MusicXML files (.musicxml or .xml)`);
+            hasErrors = true;
+        }
+
+        // Check file size
+        if (file.size > maxSize) {
+            showError(`File size exceeds 10MB limit: ${file.name}`);
+            hasErrors = true;
+        }
     }
 
-    // Check file size (10MB = 10 * 1024 * 1024 bytes)
-    if (file.size > 10 * 1024 * 1024) {
-        showError('File size exceeds 10MB limit. Please select a smaller file.');
+    if (hasErrors) {
         input.value = '';
         return false;
     }

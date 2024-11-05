@@ -6,7 +6,7 @@ from music21 import graph
 import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 import logging
@@ -26,6 +26,35 @@ class HarmonyAnalyzer:
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
+
+    def analyze_score(self):
+        """Analyze the loaded score for harmony errors"""
+        try:
+            if not self.score:
+                raise ValueError("No score loaded for analysis")
+            
+            self.errors = []
+            # Perform harmony analysis
+            # Add your harmony analysis logic here
+            # For demonstration, we'll add some sample analysis
+            measures = self.score.measureOffsetMap()
+            for measure_num in measures:
+                # Example analysis - detect parallel fifths
+                # This is a simplified example
+                measure = self.score.measure(measure_num)
+                if measure:
+                    # Add sample error for demonstration
+                    if len(measure.notes) > 3:
+                        self.errors.append({
+                            'type': 'Potential Voice Leading Issue',
+                            'measure': measure_num,
+                            'description': 'Complex voice movement detected'
+                        })
+            
+            return self.errors
+        except Exception as e:
+            logger.error(f"Error in analysis: {str(e)}")
+            raise
 
     def generate_visualization(self):
         """Generate a visualization of the score using multiple methods"""
@@ -60,7 +89,6 @@ class HarmonyAnalyzer:
                 # Method 2: Try piano roll visualization
                 try:
                     logger.debug("Attempting piano roll visualization")
-                    # Create a piano roll plot
                     plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
                     plot.run()
                     plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
@@ -103,4 +131,130 @@ class HarmonyAnalyzer:
             logger.error(f"Error in visualization: {str(e)}")
             return None
 
-    # ... [rest of the class implementation remains the same]
+class BatchAnalyzer:
+    def __init__(self):
+        self.files = []  # List of (filepath, filename) tuples
+        self.results = {}  # Dictionary to store analysis results
+        self.visualizations = {}  # Dictionary to store visualization paths
+
+    def add_file(self, filepath, filename):
+        """Add a file to the batch for analysis"""
+        self.files.append((filepath, filename))
+
+    def analyze_all(self):
+        """Analyze all files in the batch"""
+        batch_results = []
+        
+        for filepath, filename in self.files:
+            try:
+                analyzer = HarmonyAnalyzer()
+                analyzer.load_score(filepath)
+                
+                # Analyze the score
+                errors = analyzer.analyze_score()
+                
+                # Store results
+                self.results[filename] = {
+                    'errors': errors,
+                    'total_errors': len(errors)
+                }
+                
+                # Generate visualization
+                vis_path = analyzer.generate_visualization()
+                if vis_path:
+                    self.visualizations[filename] = vis_path
+                
+                batch_results.append({
+                    'filename': filename,
+                    'errors': errors,
+                    'visualization': vis_path
+                })
+                
+            except Exception as e:
+                logger.error(f"Error analyzing {filename}: {str(e)}")
+                batch_results.append({
+                    'filename': filename,
+                    'error': str(e)
+                })
+        
+        return batch_results
+
+    def generate_visualizations(self):
+        """Return all visualization paths"""
+        return self.visualizations
+
+    def generate_pdf_report(self):
+        """Generate a comprehensive PDF report for all analyzed files"""
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            spaceAfter=30
+        )
+        elements.append(Paragraph("Harmony Analysis Report", title_style))
+        elements.append(Spacer(1, 20))
+
+        # Process each file's results
+        for filename, result in self.results.items():
+            # File header
+            elements.append(Paragraph(f"Analysis for: {filename}", styles['Heading2']))
+            elements.append(Spacer(1, 10))
+
+            # Error summary
+            elements.append(Paragraph(f"Total Errors: {result['total_errors']}", styles['Normal']))
+            elements.append(Spacer(1, 10))
+
+            # Detailed errors
+            if result['errors']:
+                # Create table for errors
+                error_data = [['Type', 'Measure', 'Description']]
+                for error in result['errors']:
+                    error_data.append([
+                        error['type'],
+                        str(error['measure']),
+                        error['description']
+                    ])
+
+                table = Table(error_data, colWidths=[120, 60, 300])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 14),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 12),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                elements.append(table)
+            else:
+                elements.append(Paragraph("No errors found.", styles['Normal']))
+
+            # Add visualization if available
+            if filename in self.visualizations:
+                try:
+                    img_path = os.path.join('static', self.visualizations[filename])
+                    if os.path.exists(img_path):
+                        img = Image(img_path, width=400, height=300)
+                        elements.append(Spacer(1, 20))
+                        elements.append(img)
+                except Exception as e:
+                    logger.error(f"Error adding visualization to PDF: {str(e)}")
+
+            elements.append(Spacer(1, 30))
+
+        # Build PDF
+        doc.build(elements)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+        
+        return pdf_content
