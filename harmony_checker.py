@@ -6,6 +6,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 import logging
+import os
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -13,15 +15,44 @@ class HarmonyAnalyzer:
     def __init__(self):
         self.score = None
         self.errors = []
+        self.visualization_path = None
         
     def load_score(self, musicxml_path):
         """Loads a score from MusicXML file"""
         try:
             self.score = converter.parse(musicxml_path)
             logger.debug(f"Successfully loaded score from {musicxml_path}")
+            # Generate visualization after loading
+            self.generate_visualization()
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
+            
+    def generate_visualization(self):
+        """Generates visual representation of the score"""
+        try:
+            if not self.score:
+                return None
+                
+            # Create static directory if it doesn't exist
+            vis_dir = os.path.join('static', 'visualizations')
+            if not os.path.exists(vis_dir):
+                os.makedirs(vis_dir)
+            
+            # Generate unique filename
+            filename = f"score_{uuid.uuid4()}.png"
+            self.visualization_path = os.path.join(vis_dir, filename)
+            
+            # Create visualization using music21's showing capabilities
+            logger.debug("Generating score visualization")
+            self.score.write('lily.png', fp=self.visualization_path)
+            
+            # Return the relative path for the template
+            return os.path.join('visualizations', filename)
+            
+        except Exception as e:
+            logger.error(f"Error generating visualization: {str(e)}", exc_info=True)
+            return None
         
     def analyze(self):
         """Performs complete analysis of the score"""
@@ -59,26 +90,22 @@ class HarmonyAnalyzer:
             if len(parts) < 2:  # Need at least 2 voices to check parallels
                 return
                 
-            # Use flatten() instead of flat
             notes1 = parts[0].flatten().notes
             notes2 = parts[1].flatten().notes
             
             for i in range(len(notes1) - 1):
                 try:
-                    # Get current and next notes/chords for both voices
                     curr_elem1 = notes1[i]
                     next_elem1 = notes1[i + 1]
                     curr_elem2 = notes2[i]
                     next_elem2 = notes2[i + 1]
                     
-                    # Get pitches for both current and next elements
                     curr_pitch1 = self.get_pitch_from_element(curr_elem1)
                     next_pitch1 = self.get_pitch_from_element(next_elem1)
                     curr_pitch2 = self.get_pitch_from_element(curr_elem2)
                     next_pitch2 = self.get_pitch_from_element(next_elem2)
                     
                     if all([curr_pitch1, next_pitch1, curr_pitch2, next_pitch2]):
-                        # Calculate intervals using pitches
                         curr_interval = interval.Interval(curr_pitch1, curr_pitch2)
                         next_interval = interval.Interval(next_pitch1, next_pitch2)
                         
@@ -173,11 +200,9 @@ class HarmonyAnalyzer:
         try:
             logger.debug("Starting chord progression analysis")
             
-            # First try to get chords directly
             chords = self.score.flatten().getElementsByClass('Chord')
             logger.debug(f"Found {len(chords)} direct chords")
             
-            # If no chords found, try to create them from the piano part
             if not chords:
                 logger.debug("No direct chords found, attempting to chordify score")
                 chords = self.score.chordify().flatten().getElementsByClass('Chord')
@@ -205,14 +230,11 @@ class HarmonyAnalyzer:
             return
             
         try:
-            # First try to get chords directly
             chords = self.score.flatten().getElementsByClass('Chord')
             
-            # If no chords found, try to create them from the piano part
             if not chords:
                 chords = self.score.chordify().flatten().getElementsByClass('Chord')
             
-            # Get the last two chords
             final_chords = list(chords)[-2:]
             
             if len(final_chords) >= 2:
@@ -271,14 +293,12 @@ class HarmonyAnalyzer:
             }
             
         try:
-            # Count errors by type
             error_types = {}
             for error in self.errors:
                 if error['type'] not in error_types:
                     error_types[error['type']] = 0
                 error_types[error['type']] += 1
             
-            # Generate corrections
             corrections = []
             for error in self.errors:
                 suggestion = {
@@ -315,7 +335,6 @@ class HarmonyAnalyzer:
             styles = getSampleStyleSheet()
             story = []
 
-            # Title
             title_style = ParagraphStyle(
                 'CustomTitle',
                 parent=styles['Heading1'],
@@ -325,11 +344,9 @@ class HarmonyAnalyzer:
             story.append(Paragraph("Harmony Analysis Report", title_style))
             story.append(Spacer(1, 12))
 
-            # Summary
             story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
             story.append(Spacer(1, 12))
 
-            # Errors by Type
             if self.errors:
                 story.append(Paragraph("Detailed Errors:", styles['Heading2']))
                 story.append(Spacer(1, 12))
@@ -343,7 +360,6 @@ class HarmonyAnalyzer:
                     story.append(Paragraph(error_text, styles['Normal']))
                     story.append(Spacer(1, 12))
 
-                # Statistics
                 report = self.generate_report()
                 stats_data = [
                     ['Statistic', 'Value'],
@@ -370,7 +386,6 @@ class HarmonyAnalyzer:
                 ]))
                 story.append(table)
 
-                # Suggestions
                 story.append(Spacer(1, 20))
                 story.append(Paragraph("Suggested Corrections:", styles['Heading2']))
                 story.append(Spacer(1, 12))

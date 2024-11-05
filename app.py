@@ -16,8 +16,10 @@ app.secret_key = "harmony_checker_secret_key"  # Required for flash messages
 UPLOAD_FOLDER = 'tmp'
 ALLOWED_EXTENSIONS = {'musicxml', 'xml'}
 
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Ensure upload and visualization directories exist
+for directory in [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -67,6 +69,9 @@ def index():
                 global current_analyzer
                 current_analyzer = analyzer
                 
+                # Get visualization path
+                visualization_path = analyzer.visualization_path
+                
                 # Clean up the uploaded file
                 logger.debug("Cleaning up uploaded file")
                 os.remove(filepath)
@@ -75,7 +80,8 @@ def index():
                 return render_template('results.html', 
                                     results=analysis_results,
                                     report=report,
-                                    has_errors=bool(analysis_results))
+                                    has_errors=bool(analysis_results),
+                                    visualization_path=visualization_path)
                                     
             except Exception as e:
                 logger.error(f"Error during analysis: {str(e)}", exc_info=True)

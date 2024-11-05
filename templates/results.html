@@ -3,6 +3,20 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
+        {% if visualization_path %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="mb-0">Score Visualization</h2>
+            </div>
+            <div class="card-body text-center">
+                <img src="{{ url_for('static', filename=visualization_path) }}" 
+                     alt="Score Visualization" 
+                     class="img-fluid"
+                     style="max-width: 100%; height: auto;">
+            </div>
+        </div>
+        {% endif %}
+
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h2 class="mb-0">Analysis Results</h2>
