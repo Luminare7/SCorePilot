@@ -685,8 +685,10 @@ dependencies = [
     { name = "flask" },
     { name = "flask-sqlalchemy" },
     { name = "music21" },
+    { name = "numpy" },
     { name = "psycopg2-binary" },
     { name = "reportlab" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -695,8 +697,10 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0.3" },
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "music21", specifier = ">=9.3.0" },
+    { name = "numpy" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "reportlab", specifier = ">=4.2.5" },
+    { name = "werkzeug" },
 ]
 
 [[package]]
