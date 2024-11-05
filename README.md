@@ -20,7 +20,7 @@ SCorePilot (SCP) is an intelligent composition analysis tool that aims to become
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/scorepilot.git
+git clone https://github.com/Luminare7/scorepilot.git
 
 # Install dependencies
 pip install -r requirements.txt
