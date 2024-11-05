@@ -35,7 +35,7 @@ class HarmonyAnalyzer:
                 logger.warning("No score loaded for visualization")
                 return None
                 
-            # Create static directory if it doesn't exist
+            # Create visualizations directory
             vis_dir = os.path.join('static', 'visualizations')
             os.makedirs(vis_dir, exist_ok=True)
             
@@ -43,27 +43,28 @@ class HarmonyAnalyzer:
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            try:
-                logger.debug("Attempting to create score visualization")
-                # First try using music21's built-in visualization
-                self.score.write('musicxml.png', fp=filepath)
-                logger.debug(f"Successfully generated visualization")
-                
-                # Set relative path for template
-                self.visualization_path = os.path.join('visualizations', filename)
-                return self.visualization_path
-                
-            except Exception as e:
-                logger.warning(f"Failed to generate visualization using musicxml.png: {str(e)}")
+            visualization_methods = [
+                (lambda: self.score.show('musicxml.png', fp=filepath), 'musicxml.png'),
+                (lambda: self.score.write('lily.png', fp=filepath), 'LilyPond'),
+                (lambda: self.score.write('musicxml', fp=filepath + '.xml') and 
+                       os.system(f'musescore {filepath}.xml -o {filepath}') == 0, 'MuseScore'),
+                (lambda: self.score.write('text', fp=filepath + '.txt'), 'Text')
+            ]
+            
+            for method, name in visualization_methods:
                 try:
-                    # Try alternative method using lily
-                    logger.debug("Attempting visualization using LilyPond")
-                    self.score.write('lily.png', fp=filepath)
-                    self.visualization_path = os.path.join('visualizations', filename)
-                    return self.visualization_path
-                except Exception as e2:
-                    logger.error(f"All visualization attempts failed: {str(e2)}")
-                    return None
+                    logger.debug(f"Attempting visualization using {name}")
+                    if method():
+                        logger.debug(f"Successfully generated visualization using {name}")
+                        # Set relative path for template
+                        self.visualization_path = os.path.join('visualizations', filename)
+                        return self.visualization_path
+                except Exception as e:
+                    logger.warning(f"Failed to generate visualization using {name}: {str(e)}")
+                    continue
+            
+            logger.error("All visualization methods failed")
+            return None
                     
         except Exception as e:
             logger.error(f"Error in visualization generation: {str(e)}", exc_info=True)
@@ -93,23 +94,25 @@ class HarmonyAnalyzer:
             if len(parts) < 2:  # Need at least 2 voices to check parallels
                 return
                 
-            notes1 = parts[0].flatten().notes
-            notes2 = parts[1].flatten().notes
-            
-            for i in range(len(notes1) - 1):
-                try:
-                    curr_pitch1 = interval.Interval(notes1[i].pitch, notes2[i].pitch)
-                    next_pitch1 = interval.Interval(notes1[i + 1].pitch, notes2[i + 1].pitch)
+            for part1_idx in range(len(parts) - 1):
+                for part2_idx in range(part1_idx + 1, len(parts)):
+                    notes1 = parts[part1_idx].flatten().notes
+                    notes2 = parts[part2_idx].flatten().notes
                     
-                    if curr_pitch1.name == 'P5' and next_pitch1.name == 'P5':
-                        self.errors.append({
-                            'type': 'Parallel Fifths',
-                            'measure': notes1[i].measureNumber,
-                            'description': 'Parallel fifth movement detected between voices'
-                        })
-                except Exception as e:
-                    logger.warning(f"Error checking interval at position {i}: {str(e)}")
-                    continue
+                    for i in range(len(notes1) - 1):
+                        try:
+                            curr_interval = interval.Interval(noteStart=notes1[i], noteEnd=notes2[i])
+                            next_interval = interval.Interval(noteStart=notes1[i + 1], noteEnd=notes2[i + 1])
+                            
+                            if curr_interval.simpleName == 'P5' and next_interval.simpleName == 'P5':
+                                self.errors.append({
+                                    'type': 'Parallel Fifths',
+                                    'measure': notes1[i].measureNumber,
+                                    'description': f'Parallel fifth movement detected between voices {part1_idx + 1} and {part2_idx + 1}'
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error checking interval at position {i}: {str(e)}")
+                            continue
                     
         except Exception as e:
             logger.error(f"Error in parallel fifths check: {str(e)}", exc_info=True)
@@ -124,23 +127,25 @@ class HarmonyAnalyzer:
             if len(parts) < 2:
                 return
                 
-            notes1 = parts[0].flatten().notes
-            notes2 = parts[1].flatten().notes
-            
-            for i in range(len(notes1) - 1):
-                try:
-                    curr_pitch1 = interval.Interval(notes1[i].pitch, notes2[i].pitch)
-                    next_pitch1 = interval.Interval(notes1[i + 1].pitch, notes2[i + 1].pitch)
+            for part1_idx in range(len(parts) - 1):
+                for part2_idx in range(part1_idx + 1, len(parts)):
+                    notes1 = parts[part1_idx].flatten().notes
+                    notes2 = parts[part2_idx].flatten().notes
                     
-                    if curr_pitch1.name == 'P8' and next_pitch1.name == 'P8':
-                        self.errors.append({
-                            'type': 'Parallel Octaves',
-                            'measure': notes1[i].measureNumber,
-                            'description': 'Parallel octave movement detected between voices'
-                        })
-                except Exception as e:
-                    logger.warning(f"Error checking octaves at position {i}: {str(e)}")
-                    continue
+                    for i in range(len(notes1) - 1):
+                        try:
+                            curr_interval = interval.Interval(noteStart=notes1[i], noteEnd=notes2[i])
+                            next_interval = interval.Interval(noteStart=notes1[i + 1], noteEnd=notes2[i + 1])
+                            
+                            if curr_interval.simpleName == 'P8' and next_interval.simpleName == 'P8':
+                                self.errors.append({
+                                    'type': 'Parallel Octaves',
+                                    'measure': notes1[i].measureNumber,
+                                    'description': f'Parallel octave movement detected between voices {part1_idx + 1} and {part2_idx + 1}'
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error checking interval at position {i}: {str(e)}")
+                            continue
                     
         except Exception as e:
             logger.error(f"Error in parallel octaves check: {str(e)}", exc_info=True)
@@ -152,21 +157,32 @@ class HarmonyAnalyzer:
             
         try:
             parts = self.score.parts
-            for part in parts:
+            for part_idx, part in enumerate(parts):
                 notes = part.flatten().notes
                 for i in range(len(notes) - 1):
                     try:
-                        interval_size = abs(interval.Interval(
-                            noteStart=notes[i], 
-                            noteEnd=notes[i+1]
-                        ).semitones)
+                        # Check for large leaps
+                        interval_obj = interval.Interval(noteStart=notes[i], noteEnd=notes[i+1])
+                        interval_size = abs(interval_obj.semitones)
                         
                         if interval_size > 12:  # Larger than an octave
                             self.errors.append({
                                 'type': 'Large Leap',
                                 'measure': notes[i].measureNumber,
-                                'description': f'Large melodic leap of {interval_size} semitones'
+                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
                             })
+                            
+                        # Check for voice crossing with next lower voice
+                        if part_idx < len(parts) - 1:
+                            lower_voice = parts[part_idx + 1].flatten().notes
+                            if i < len(lower_voice):
+                                if notes[i].pitch < lower_voice[i].pitch:
+                                    self.errors.append({
+                                        'type': 'Voice Crossing',
+                                        'measure': notes[i].measureNumber,
+                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
+                                    })
+                                    
                     except Exception as e:
                         logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
                         continue
@@ -185,13 +201,16 @@ class HarmonyAnalyzer:
             
             for chord in chordified.recurse().getElementsByClass('Chord'):
                 if prev_chord:
-                    # Simple check for V-IV progression (assuming C major for simplicity)
-                    if prev_chord.root().name == 'G' and chord.root().name == 'F':
-                        self.errors.append({
-                            'type': 'Weak Progression',
-                            'measure': chord.measureNumber,
-                            'description': 'V-IV progression detected'
-                        })
+                    try:
+                        # Check for V-IV progression (considered weak in traditional harmony)
+                        if (prev_chord.root().name == 'G' and chord.root().name == 'F'):
+                            self.errors.append({
+                                'type': 'Weak Progression',
+                                'measure': chord.measureNumber,
+                                'description': 'V-IV progression detected (usually considered weak)'
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error analyzing chord progression: {str(e)}")
                 prev_chord = chord
                 
         except Exception as e:
@@ -208,14 +227,16 @@ class HarmonyAnalyzer:
             
             if len(chords) >= 2:
                 final_chords = chords[-2:]
-                # Simple check for authentic cadence (V-I in C major)
-                if not (final_chords[0].root().name == 'G' and 
-                       final_chords[1].root().name == 'C'):
-                    self.errors.append({
-                        'type': 'Invalid Cadence',
-                        'measure': final_chords[1].measureNumber,
-                        'description': 'Phrase does not end with proper authentic cadence'
-                    })
+                try:
+                    # Check for authentic cadence (V-I)
+                    if not (final_chords[0].root().name == 'G' and final_chords[1].root().name == 'C'):
+                        self.errors.append({
+                            'type': 'Invalid Cadence',
+                            'measure': final_chords[1].measureNumber,
+                            'description': 'Phrase does not end with proper authentic cadence (V-I)'
+                        })
+                except Exception as e:
+                    logger.warning(f"Error analyzing cadence: {str(e)}")
                     
         except Exception as e:
             logger.error(f"Error in cadence check: {str(e)}", exc_info=True)
@@ -249,6 +270,7 @@ class HarmonyAnalyzer:
                 'Parallel Fifths': 'Use contrary or oblique motion between voices',
                 'Parallel Octaves': 'Use contrary or oblique motion between voices',
                 'Large Leap': 'Consider stepwise motion or smaller intervals',
+                'Voice Crossing': 'Keep voices within their designated ranges',
                 'Weak Progression': 'Consider using stronger chord progressions like V-I',
                 'Invalid Cadence': 'End the phrase with an authentic cadence (V-I)'
             }.get(error['type'], 'Review and revise this section')

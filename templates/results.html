@@ -3,6 +3,80 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
+        <!-- Analysis Results Card -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="mb-0">Analysis Results</h2>
+                {% if results or not has_errors %}
+                <a href="{{ url_for('download_pdf') }}" class="btn btn-primary">
+                    Download PDF Report
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if report %}
+                    <div class="alert {% if report.total_errors > 0 %}alert-warning{% else %}alert-success{% endif %}">
+                        Total Errors Found: {{ report.total_errors }}
+                    </div>
+
+                    {% if results %}
+                        <h3 class="mb-3">Errors by Type</h3>
+                        {% for error in results %}
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ error.type }}</h5>
+                                    <p class="card-text">
+                                        <strong>Measure:</strong> {{ error.measure }}<br>
+                                        <strong>Description:</strong> {{ error.description }}
+                                    </p>
+                                </div>
+                            </div>
+                        {% endfor %}
+
+                        {% if report.corrections %}
+                            <h3 class="mb-3">Suggested Corrections</h3>
+                            {% for correction in report.corrections %}
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        <h5 class="card-title">{{ correction.error.type }}</h5>
+                                        <p class="card-text">{{ correction.suggestion }}</p>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-success">
+                            <h4 class="alert-heading">Great news!</h4>
+                            <p>No errors were found in your score. The harmony analysis shows that your composition follows good musical practices.</p>
+                        </div>
+                    {% endif %}
+
+                    {% if report.statistics %}
+                        <h3 class="mb-3">Analysis Statistics</h3>
+                        <div class="card">
+                            <div class="card-body">
+                                <p><strong>Total Measures Analyzed:</strong> {{ report.statistics.measures_analyzed }}</p>
+                                {% if report.statistics.common_problems %}
+                                    <p><strong>Common Issues:</strong></p>
+                                    <ul>
+                                        {% for problem in report.statistics.common_problems %}
+                                            <li>{{ problem }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-danger">
+                        <h4 class="alert-heading">Analysis Error</h4>
+                        <p>There was an error processing your score. Please try again or contact support if the problem persists.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Score Visualization Card -->
         <div class="card mb-4">
             <div class="card-header">
                 <h2 class="mb-0">Score Visualization</h2>
@@ -17,14 +91,15 @@
                 {% else %}
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
-                        Score visualization is currently unavailable.
+                        Score visualization is currently unavailable. Analysis results are still available above.
                     </div>
                 {% endif %}
             </div>
         </div>
-
-        <!-- Rest of the template remains the same -->
-        [Previous template content]
+        
+        <div class="text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Analyze Another Score</a>
+        </div>
     </div>
 </div>
 {% endblock %}
