@@ -5,17 +5,16 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="text-center mb-0">Upload Music Scores</h2>
+                <h2 class="text-center mb-0">Upload Music Score</h2>
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data" class="text-center" onsubmit="return validateForm()">
                     <div class="mb-4">
-                        <label for="files" class="form-label">Select MusicXML files</label>
-                        <input type="file" class="form-control" id="files" name="files[]" accept=".musicxml,.xml" required multiple>
-                        <div class="form-text">Supported formats: .musicxml, .xml (max size per file: 10MB)</div>
-                        <div id="selectedFiles" class="mt-2"></div>
+                        <label for="file" class="form-label">Select MusicXML file</label>
+                        <input type="file" class="form-control" id="file" name="file" accept=".musicxml,.xml" required>
+                        <div class="form-text">Supported formats: .musicxml, .xml (max size: 10MB)</div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Analyze Scores</button>
+                    <button type="submit" class="btn btn-primary">Analyze Score</button>
                 </form>
             </div>
         </div>
