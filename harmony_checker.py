@@ -6,10 +6,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 import logging
-import os
-import uuid
-import matplotlib
-matplotlib.use('Agg')  # Set backend before importing pyplot
 
 logger = logging.getLogger(__name__)
 
@@ -17,52 +13,15 @@ class HarmonyAnalyzer:
     def __init__(self):
         self.score = None
         self.errors = []
-        self.visualization_path = None
         
     def load_score(self, musicxml_path):
         """Loads a score from MusicXML file"""
         try:
             self.score = converter.parse(musicxml_path)
             logger.debug(f"Successfully loaded score from {musicxml_path}")
-            # Generate visualization after loading
-            self.visualization_path = self.generate_visualization()
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
-            
-    def generate_visualization(self):
-        try:
-            if not self.score:
-                return None
-                
-            vis_dir = os.path.join('static', 'visualizations')
-            os.makedirs(vis_dir, exist_ok=True)
-            
-            filename = f"score_{uuid.uuid4()}.png"
-            filepath = os.path.join(vis_dir, filename)
-            
-            # Try direct stream visualization
-            try:
-                # Create a stream with just the notes/chords
-                reduced_score = self.score.measures(0, None).stripTies()
-                reduced_score.write('musicxml.png', fp=filepath)
-                return os.path.join('visualizations', filename)
-            except Exception as e1:
-                logger.debug(f"Direct visualization failed: {e1}")
-                
-                # Try alternative visualization using piano roll
-                try:
-                    plot = graph.plot.Piano(reduced_score, doneAction=None)
-                    plot.run()
-                    plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
-                    return os.path.join('visualizations', filename)
-                except Exception as e2:
-                    logger.debug(f"Piano roll visualization failed: {e2}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"All visualization methods failed: {str(e)}")
-            return None
 
     def check_parallel_fifths(self):
         """Checks for parallel fifths between voices"""
@@ -125,16 +84,14 @@ class HarmonyAnalyzer:
                 notes = list(part.flatten().notesAndRests)
                 for j in range(len(notes) - 1):
                     if isinstance(notes[j], note.Note) and isinstance(notes[j+1], note.Note):
-                        # Check for large leaps
                         curr_interval = interval.Interval(noteStart=notes[j], noteEnd=notes[j+1])
-                        if abs(curr_interval.semitones) > 9:  # Larger than major 6th
+                        if abs(curr_interval.semitones) > 9:
                             self.errors.append({
                                 'type': 'Voice Leading',
                                 'measure': notes[j].measureNumber,
                                 'description': f'Large leap ({abs(curr_interval.semitones)} semitones) in part {i+1}'
                             })
                         
-                        # Check for voice crossing
                         if i < len(parts) - 1:
                             lower_part_notes = list(parts[i+1].flatten().notesAndRests)
                             if j < len(lower_part_notes) and isinstance(lower_part_notes[j], note.Note):
@@ -159,12 +116,10 @@ class HarmonyAnalyzer:
             
             for chord in chords.recurse().getElementsByClass('Chord'):
                 if prev_chord:
-                    # Check for direct fifth/octave motion
                     if len(chord.pitches) >= 2 and len(prev_chord.pitches) >= 2:
                         if chord.root().name == prev_chord.root().name:
                             continue
                             
-                        # Check for weak root progression
                         curr_root = chord.root()
                         prev_root = prev_chord.root()
                         interval_between_roots = interval.Interval(noteStart=prev_root, noteEnd=curr_root)
@@ -194,7 +149,6 @@ class HarmonyAnalyzer:
             if len(chord_list) >= 2:
                 final_chords = chord_list[-2:]
                 
-                # Check for authentic cadence (V-I)
                 if len(final_chords) == 2:
                     penultimate = final_chords[0]
                     final = final_chords[1]
@@ -205,7 +159,7 @@ class HarmonyAnalyzer:
                             noteEnd=final.root()
                         )
                         
-                        if interval_between.directedSimpleName != 'P4':  # Not a V-I progression
+                        if interval_between.directedSimpleName != 'P4':
                             self.errors.append({
                                 'type': 'Cadence',
                                 'measure': final.measureNumber,
@@ -219,7 +173,7 @@ class HarmonyAnalyzer:
     def analyze(self):
         """Performs complete analysis of the score"""
         try:
-            self.errors = []  # Reset errors before new analysis
+            self.errors = []
             self.check_parallel_fifths()
             self.check_parallel_octaves()
             self.check_voice_leading()

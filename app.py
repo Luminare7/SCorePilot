@@ -1,6 +1,6 @@
 import os
 import logging
-from flask import Flask, render_template, request, flash, redirect, url_for, send_file
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file, Response
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer
 import io
@@ -18,10 +18,9 @@ UPLOAD_FOLDER = 'tmp'
 ALLOWED_EXTENSIONS = {'musicxml', 'xml'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
 
-# Ensure upload and visualization directories exist
-for directory in [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+# Ensure upload directory exists
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE  # Flask will automatically reject larger files
@@ -109,9 +108,6 @@ def index():
             global current_analyzer
             current_analyzer = analyzer
             
-            # Get visualization path
-            visualization_path = analyzer.visualization_path
-            
             # Clean up the uploaded file
             logger.debug("Cleaning up uploaded file")
             os.remove(filepath)
@@ -120,8 +116,7 @@ def index():
             return render_template('results.html', 
                                 results=analysis_results,
                                 report=report,
-                                has_errors=bool(analysis_results),
-                                visualization_path=visualization_path), 200
+                                has_errors=bool(analysis_results)), 200
                                 
         except Exception as e:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)
@@ -154,6 +149,22 @@ def download_pdf():
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
         flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
         return redirect(url_for('index')), 500
+
+@app.route('/get_musicxml')
+def get_musicxml():
+    """Endpoint to serve MusicXML data for client-side visualization"""
+    logger.debug("Processing MusicXML data request")
+    try:
+        global current_analyzer
+        if not current_analyzer or not current_analyzer.score:
+            logger.error("No score available")
+            return 'No score available', 404
+            
+        musicxml_data = current_analyzer.score.write('musicxml')
+        return Response(musicxml_data, mimetype='application/xml')
+    except Exception as e:
+        logger.error(f"Error serving MusicXML: {str(e)}")
+        return 'Error generating MusicXML', 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
