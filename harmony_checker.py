@@ -23,7 +23,7 @@ class HarmonyAnalyzer:
             self.score = converter.parse(musicxml_path)
             logger.debug(f"Successfully loaded score from {musicxml_path}")
             # Generate visualization after loading
-            self.generate_visualization()
+            self.visualization_path = self.generate_visualization()
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
@@ -43,29 +43,36 @@ class HarmonyAnalyzer:
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            visualization_methods = [
-                (lambda: self.score.show('musicxml.png', fp=filepath), 'musicxml.png'),
-                (lambda: self.score.write('lily.png', fp=filepath), 'LilyPond'),
-                (lambda: self.score.write('musicxml', fp=filepath + '.xml') and 
-                       os.system(f'musescore {filepath}.xml -o {filepath}') == 0, 'MuseScore'),
-                (lambda: self.score.write('text', fp=filepath + '.txt'), 'Text')
-            ]
-            
-            for method, name in visualization_methods:
+            try:
+                # Try direct musicxml.png export first
+                logger.debug("Attempting direct musicxml.png export")
+                self.score.write('musicxml.png', fp=filepath)
+                logger.debug(f"Successfully generated visualization at {filepath}")
+                return os.path.join('visualizations', filename)
+            except Exception as e1:
+                logger.warning(f"Direct musicxml.png export failed: {str(e1)}")
                 try:
-                    logger.debug(f"Attempting visualization using {name}")
-                    if method():
-                        logger.debug(f"Successfully generated visualization using {name}")
-                        # Set relative path for template
-                        self.visualization_path = os.path.join('visualizations', filename)
-                        return self.visualization_path
-                except Exception as e:
-                    logger.warning(f"Failed to generate visualization using {name}: {str(e)}")
-                    continue
+                    # Try LilyPond as fallback
+                    logger.debug("Attempting LilyPond export")
+                    self.score.write('lily.png', fp=filepath)
+                    logger.debug(f"Successfully generated visualization using LilyPond at {filepath}")
+                    return os.path.join('visualizations', filename)
+                except Exception as e2:
+                    logger.warning(f"LilyPond export failed: {str(e2)}")
+                    try:
+                        # Try MuseScore as final fallback
+                        logger.debug("Attempting MuseScore export")
+                        xml_path = filepath + '.xml'
+                        self.score.write('musicxml', fp=xml_path)
+                        os.system(f'musescore "{xml_path}" -o "{filepath}"')
+                        if os.path.exists(filepath):
+                            os.remove(xml_path)  # Clean up temporary XML file
+                            logger.debug(f"Successfully generated visualization using MuseScore at {filepath}")
+                            return os.path.join('visualizations', filename)
+                    except Exception as e3:
+                        logger.error(f"All visualization attempts failed. Last error: {str(e3)}")
+                        return None
             
-            logger.error("All visualization methods failed")
-            return None
-                    
         except Exception as e:
             logger.error(f"Error in visualization generation: {str(e)}", exc_info=True)
             return None
