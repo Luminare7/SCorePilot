@@ -30,23 +30,35 @@ class HarmonyAnalyzer:
             if not self.score:
                 return None
                 
-            # Create visualizations directory
+            # Set up music21 environment for MuseScore
+            try:
+                environment.set('musicxmlPath', '/usr/bin/musescore')
+            except Exception as e:
+                logger.debug(f"Failed to set MuseScore path: {e}")
+            
             vis_dir = os.path.join('static', 'visualizations')
             os.makedirs(vis_dir, exist_ok=True)
             
-            # Generate unique filename
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            # Try simple score rendering
             try:
-                # Use music21's write() method with 'png' format
-                self.score.write('png', fp=filepath)
-                return os.path.join('visualizations', filename)
+                # Try using MuseScore backend
+                self.score.write('musicxml.png', fp=filepath)
+                if os.path.exists(filepath):
+                    return os.path.join('visualizations', filename)
             except Exception as e1:
-                logger.debug(f"PNG export failed: {e1}")
-                return None
-                
+                logger.debug(f"MuseScore export failed: {e1}")
+                try:
+                    # Fallback to basic visualization
+                    self.score.plot('pianoroll').write(filepath)
+                    if os.path.exists(filepath):
+                        return os.path.join('visualizations', filename)
+                except Exception as e2:
+                    logger.debug(f"Fallback visualization failed: {e2}")
+                    return None
+                    
+            return None
         except Exception as e:
             logger.error(f"Visualization failed: {str(e)}")
             return None
