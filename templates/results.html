@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2 class="mb-0">Analysis Results</h2>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    Total Errors Found: {{ report.total_errors }}
+                </div>
+
+                {% if results %}
+                    <h3 class="mb-3">Errors by Type</h3>
+                    {% for error in results %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ error.type }}</h5>
+                                <p class="card-text">
+                                    <strong>Measure:</strong> {{ error.measure }}<br>
+                                    <strong>Description:</strong> {{ error.description }}
+                                </p>
+                            </div>
+                        </div>
+                    {% endfor %}
+
+                    <h3 class="mb-3">Suggested Corrections</h3>
+                    {% for correction in report.corrections %}
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ correction.error.type }}</h5>
+                                <p class="card-text">{{ correction.suggestion }}</p>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="alert alert-success">
+                        No errors found in the score!
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Analyze Another Score</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
