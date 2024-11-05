@@ -8,8 +8,6 @@ import io
 import logging
 import os
 import uuid
-import matplotlib
-matplotlib.use('Agg')  # Set backend before importing pyplot
 
 logger = logging.getLogger(__name__)
 
@@ -31,47 +29,54 @@ class HarmonyAnalyzer:
             raise Exception(f"Failed to load score: {str(e)}")
             
     def generate_visualization(self):
+        """Generates visual representation of the score"""
         try:
             if not self.score:
+                logger.warning("No score loaded for visualization")
                 return None
                 
             vis_dir = os.path.join('static', 'visualizations')
             os.makedirs(vis_dir, exist_ok=True)
+            os.chmod(vis_dir, 0o755)  # Set directory permissions
             
             filename = f"score_{uuid.uuid4()}.png"
             filepath = os.path.join(vis_dir, filename)
             
-            # Method 1: Try using graph.plot
+            # Try different visualization methods
             try:
-                plot = graph.plot.PlotScore(self.score)
-                plot.run()
-                plot.figure.savefig(filepath)
-                return os.path.join('visualizations', filename)
+                logger.debug("Attempting score.show() method")
+                self.score.show('musicxml.png', fp=filepath)
+                logger.debug("score.show() method succeeded")
             except Exception as e1:
-                logger.debug(f"PlotScore failed: {e1}")
-                
-            # Method 2: Try basic notation plot
-            try:
-                plot = graph.plot.ScoreHorizontalBar(self.score)
-                plot.run()
-                plot.figure.savefig(filepath)
+                logger.debug(f"show() method failed: {e1}")
+                try:
+                    logger.debug("Attempting score.write() method")
+                    self.score.write('musicxml.png', fp=filepath)
+                    logger.debug("score.write() method succeeded")
+                except Exception as e2:
+                    logger.debug(f"write() method failed: {e2}")
+                    try:
+                        logger.debug("Attempting alternative visualization method")
+                        # Try to get the first part or measure if available
+                        if len(self.score.parts) > 0:
+                            self.score.parts[0].write('musicxml.png', fp=filepath)
+                        else:
+                            self.score.measures(0, None).write('musicxml.png', fp=filepath)
+                        logger.debug("Alternative visualization method succeeded")
+                    except Exception as e3:
+                        logger.error(f"All visualization methods failed: {e3}")
+                        return None
+
+            if os.path.exists(filepath):
+                os.chmod(filepath, 0o644)  # Set file permissions
+                logger.debug(f"Successfully generated visualization at {filepath}")
                 return os.path.join('visualizations', filename)
-            except Exception as e2:
-                logger.debug(f"ScoreHorizontalBar failed: {e2}")
-                
-            # Method 3: Try piano roll visualization
-            try:
-                plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
-                plot.run()
-                plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
-                return os.path.join('visualizations', filename)
-            except Exception as e3:
-                logger.debug(f"HorizontalBarPitchSpaceOffset failed: {e3}")
-                
+            
+            logger.warning("Visualization file was not created")
             return None
             
         except Exception as e:
-            logger.error(f"All visualization methods failed: {str(e)}")
+            logger.error(f"Visualization generation failed: {str(e)}")
             return None
 
     def analyze(self):
@@ -88,53 +93,6 @@ class HarmonyAnalyzer:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)
             raise Exception(f"Analysis failed: {str(e)}")
 
-    def check_voice_leading(self):
-        """Checks voice leading rules"""
-        if not self.score:
-            return
-            
-        try:
-            parts = self.score.parts
-            for part_idx, part in enumerate(parts):
-                notes = part.flatten().notes
-                for i in range(len(notes) - 1):
-                    try:
-                        # Handle both Note and Chord objects
-                        current_pitch = notes[i].pitch if hasattr(notes[i], 'pitch') else notes[i].root()
-                        next_pitch = notes[i+1].pitch if hasattr(notes[i+1], 'pitch') else notes[i+1].root()
-                        
-                        # Check for large leaps
-                        interval_obj = interval.Interval(noteStart=note.Note(current_pitch), 
-                                                      noteEnd=note.Note(next_pitch))
-                        interval_size = abs(interval_obj.semitones)
-                        
-                        if interval_size > 12:  # Larger than an octave
-                            self.errors.append({
-                                'type': 'Large Leap',
-                                'measure': notes[i].measureNumber,
-                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
-                            })
-                            
-                        # Check for voice crossing with next lower voice
-                        if part_idx < len(parts) - 1:
-                            lower_voice = parts[part_idx + 1].flatten().notes
-                            if i < len(lower_voice):
-                                lower_pitch = lower_voice[i].pitch if hasattr(lower_voice[i], 'pitch') else lower_voice[i].root()
-                                if current_pitch < lower_pitch:
-                                    self.errors.append({
-                                        'type': 'Voice Crossing',
-                                        'measure': notes[i].measureNumber,
-                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
-                                    })
-                                    
-                    except Exception as e:
-                        logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
-                        continue
-                        
-        except Exception as e:
-            logger.error(f"Error in voice leading check: {str(e)}", exc_info=True)
-
-    # [Rest of the class implementation remains the same...]
     def check_parallel_fifths(self):
         """Checks for parallel fifths between voices"""
         if not self.score:
@@ -200,6 +158,46 @@ class HarmonyAnalyzer:
                     
         except Exception as e:
             logger.error(f"Error in parallel octaves check: {str(e)}", exc_info=True)
+
+    def check_voice_leading(self):
+        """Checks voice leading rules"""
+        if not self.score:
+            return
+            
+        try:
+            parts = self.score.parts
+            for part_idx, part in enumerate(parts):
+                notes = part.flatten().notes
+                for i in range(len(notes) - 1):
+                    try:
+                        # Check for large leaps
+                        interval_obj = interval.Interval(noteStart=notes[i], noteEnd=notes[i+1])
+                        interval_size = abs(interval_obj.semitones)
+                        
+                        if interval_size > 12:  # Larger than an octave
+                            self.errors.append({
+                                'type': 'Large Leap',
+                                'measure': notes[i].measureNumber,
+                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
+                            })
+                            
+                        # Check for voice crossing with next lower voice
+                        if part_idx < len(parts) - 1:
+                            lower_voice = parts[part_idx + 1].flatten().notes
+                            if i < len(lower_voice):
+                                if notes[i].pitch < lower_voice[i].pitch:
+                                    self.errors.append({
+                                        'type': 'Voice Crossing',
+                                        'measure': notes[i].measureNumber,
+                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
+                                    })
+                                    
+                    except Exception as e:
+                        logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            logger.error(f"Error in voice leading check: {str(e)}", exc_info=True)
 
     def check_chord_progressions(self):
         """Analyzes chord progressions"""
@@ -305,6 +303,7 @@ class HarmonyAnalyzer:
             styles = getSampleStyleSheet()
             story = []
 
+            # Title
             title_style = ParagraphStyle(
                 'CustomTitle',
                 parent=styles['Heading1'],
@@ -314,10 +313,12 @@ class HarmonyAnalyzer:
             story.append(Paragraph("Harmony Analysis Report", title_style))
             story.append(Spacer(1, 12))
 
+            # Error Summary
             story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
             story.append(Spacer(1, 12))
 
             if self.errors:
+                # Detailed Errors
                 story.append(Paragraph("Detailed Errors:", styles['Heading2']))
                 story.append(Spacer(1, 12))
 
@@ -330,6 +331,7 @@ class HarmonyAnalyzer:
                     story.append(Paragraph(error_text, styles['Normal']))
                     story.append(Spacer(1, 12))
 
+                # Statistics Table
                 report = self.generate_report()
                 stats_data = [
                     ['Statistic', 'Value'],
@@ -356,6 +358,7 @@ class HarmonyAnalyzer:
                 ]))
                 story.append(table)
 
+                # Corrections
                 story.append(Spacer(1, 20))
                 story.append(Paragraph("Suggested Corrections:", styles['Heading2']))
                 story.append(Spacer(1, 12))
