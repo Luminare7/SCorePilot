@@ -6,6 +6,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 import logging
+import os
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,32 @@ class HarmonyAnalyzer:
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
+
+    def generate_visualization(self):
+        try:
+            if not self.score:
+                return None
+                
+            # Create visualizations directory
+            vis_dir = os.path.join('static', 'visualizations')
+            os.makedirs(vis_dir, exist_ok=True)
+            
+            # Generate unique filename
+            filename = f"score_{uuid.uuid4()}.png"
+            filepath = os.path.join(vis_dir, filename)
+            
+            # Try simple score rendering
+            try:
+                # Use music21's write() method with 'png' format
+                self.score.write('png', fp=filepath)
+                return os.path.join('visualizations', filename)
+            except Exception as e1:
+                logger.debug(f"PNG export failed: {e1}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Visualization failed: {str(e)}")
+            return None
 
     def check_parallel_fifths(self):
         """Checks for parallel fifths between voices"""

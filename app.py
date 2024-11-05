@@ -103,6 +103,9 @@ def index():
             
             logger.debug("Generating report")
             report = analyzer.generate_report()
+
+            logger.debug("Generating visualization")
+            visualization_path = analyzer.generate_visualization()
             
             # Store analyzer in global variable for PDF generation
             global current_analyzer
@@ -116,7 +119,8 @@ def index():
             return render_template('results.html', 
                                 results=analysis_results,
                                 report=report,
-                                has_errors=bool(analysis_results)), 200
+                                has_errors=bool(analysis_results),
+                                visualization_path=visualization_path), 200
                                 
         except Exception as e:
             logger.error(f"Error during analysis: {str(e)}", exc_info=True)

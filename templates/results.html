@@ -82,13 +82,16 @@
                 <h2 class="mb-0">Score Visualization</h2>
             </div>
             <div class="card-body">
-                <div id="osmdCanvas" class="score-visualization">
-                    <div class="visualization-loading text-center">
-                        <div class="spinner-border text-primary mb-2" role="status">
-                            <span class="visually-hidden">Loading visualization...</span>
+                <div id="scoreVisualization" class="text-center">
+                    {% if visualization_path %}
+                        <img src="{{ url_for('static', filename=visualization_path) }}" 
+                             alt="Score visualization" 
+                             class="img-fluid">
+                    {% else %}
+                        <div class="alert alert-warning">
+                            Score visualization is currently unavailable.
                         </div>
-                        <p class="text-muted">Loading score visualization...</p>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -98,60 +101,4 @@
         </div>
     </div>
 </div>
-
-<style>
-.score-visualization {
-    min-height: 200px;
-    max-width: 100%;
-    position: relative;
-}
-
-.visualization-loading {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1;
-}
-</style>
-
-<!-- Replace OpenSheetMusicDisplay with Verovio -->
-<script src="https://www.verovio.org/javascript/latest/verovio-toolkit.js"></script>
-
-<script>
-// Initialize Verovio
-const verovio = new verovio.toolkit();
-
-// Set options for better performance
-verovio.setOptions({
-    pageWidth: document.getElementById('osmdCanvas').clientWidth,
-    pageHeight: 800,
-    scale: 40,
-    adjustPageHeight: true
-});
-
-// Load and render score
-fetch('/get_musicxml')
-    .then(response => {
-        if (!response.ok) throw new Error('Score not available');
-        return response.text();
-    })
-    .then(xml => {
-        // Load the MEI data
-        verovio.loadData(xml);
-        
-        // Render the first page
-        const svg = verovio.renderToSVG(1);
-        document.getElementById('osmdCanvas').innerHTML = svg;
-        document.querySelector('.visualization-loading').style.display = 'none';
-    })
-    .catch(error => {
-        console.error('Visualization error:', error);
-        document.getElementById('osmdCanvas').innerHTML = 
-            '<div class="alert alert-warning mt-3">' +
-            'Unable to render score visualization. The score might be too complex or use unsupported notation features.' +
-            '</div>';
-        document.querySelector('.visualization-loading').style.display = 'none';
-    });
-</script>
 {% endblock %}
