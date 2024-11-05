@@ -1,20 +1,15 @@
-import os
-import uuid
-import logging
 from music21 import *
-import matplotlib
-matplotlib.use('Agg')  # Set non-interactive backend before importing pyplot
-import matplotlib.pyplot as plt
-from music21 import environment, graph, converter, interval
 import numpy as np
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
-import subprocess
-import tempfile
-from pathlib import Path
+import logging
+import os
+import uuid
+import matplotlib
+matplotlib.use('Agg')  # Set backend before importing pyplot
 
 logger = logging.getLogger(__name__)
 
@@ -22,395 +17,357 @@ class HarmonyAnalyzer:
     def __init__(self):
         self.score = None
         self.errors = []
-        self._setup_visualization_environment()
+        self.visualization_path = None
         
-    def _setup_visualization_environment(self):
-        """Setup visualization environment and verify dependencies"""
-        try:
-            # Configure matplotlib with optimal settings for music visualization
-            matplotlib.use('Agg')
-            matplotlib.rcParams.update({
-                'figure.max_open_warning': 50,
-                'figure.dpi': 300,
-                'savefig.dpi': 300,
-                'figure.figsize': (12, 6),
-                'figure.autolayout': True,
-                'agg.path.chunksize': 20000
-            })
-            
-            # Ensure visualization directories exist with proper permissions
-            dirs_to_create = [
-                os.path.join('static', 'visualizations'),
-                os.path.join('tmp', 'score_renders'),
-                'tmp'
-            ]
-            
-            for directory in dirs_to_create:
-                os.makedirs(directory, exist_ok=True)
-                os.chmod(directory, 0o755)
-                logger.info(f"Ensured directory exists with proper permissions: {directory}")
-            
-            # Verify and configure music21 environment
-            env = environment.Environment()
-            musescore_path = self._find_musescore()
-            if musescore_path:
-                env['musicxmlPath'] = musescore_path
-                env['musescoreDirectPNGPath'] = musescore_path
-                env.write()
-                logger.info(f"MuseScore path configured: {musescore_path}")
-            else:
-                logger.warning("MuseScore path not configured - will use alternative visualization methods")
-            
-        except Exception as e:
-            logger.error(f"Error setting up visualization environment: {str(e)}")
-            raise
-
-    def _find_musescore(self):
-        """Find MuseScore executable in the system"""
-        try:
-            # Check common paths first
-            common_names = ['mscore', 'musescore']
-            for name in common_names:
-                result = subprocess.run(['which', name], capture_output=True, text=True)
-                if result.returncode == 0:
-                    return result.stdout.strip()
-
-            # Search in Nix store as fallback
-            result = subprocess.run(
-                ['find', '/nix/store', '-name', 'mscore', '-type', 'f'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.splitlines()[0]
-
-            return None
-        except Exception as e:
-            logger.error(f"Error finding MuseScore: {str(e)}")
-            return None
-
     def load_score(self, musicxml_path):
         """Loads a score from MusicXML file"""
         try:
             self.score = converter.parse(musicxml_path)
-            logger.info(f"Successfully loaded score from {musicxml_path}")
+            logger.debug(f"Successfully loaded score from {musicxml_path}")
+            # Generate visualization after loading
+            self.visualization_path = self.generate_visualization()
         except Exception as e:
             logger.error(f"Error loading score: {str(e)}", exc_info=True)
             raise Exception(f"Failed to load score: {str(e)}")
-
-    def analyze_score(self):
-        """Analyzes the loaded score for harmony errors"""
+            
+    def generate_visualization(self):
         try:
             if not self.score:
-                raise ValueError("No score loaded for analysis")
+                return None
+                
+            vis_dir = os.path.join('static', 'visualizations')
+            os.makedirs(vis_dir, exist_ok=True)
             
-            self.errors = []
-            measures = self.score.measureOffsetMap()
-            measure_numbers = sorted(int(measure_num) for measure_num in measures.keys())
+            filename = f"score_{uuid.uuid4()}.png"
+            filepath = os.path.join(vis_dir, filename)
             
-            for measure_num in measure_numbers:
-                try:
-                    measure = self.score.measure(measure_num)
-                    if not measure:
-                        continue
-
-                    self._analyze_voice_leading(measure, measure_num)
-                    self._analyze_harmony(measure, measure_num)
-                        
-                except Exception as me:
-                    logger.warning(f"Error analyzing measure {measure_num}: {str(me)}")
-                    continue
-                    
-            return self.errors
-        except Exception as e:
-            logger.error(f"Error in analysis: {str(e)}")
-            raise
-
-    def generate_visualization(self):
-        """Generate a visualization of the score using multiple methods with fallbacks"""
-        if not self.score:
-            logger.warning("No score available for visualization")
+            # Method 1: Try using graph.plot
+            try:
+                plot = graph.plot.PlotScore(self.score)
+                plot.run()
+                plot.figure.savefig(filepath)
+                return os.path.join('visualizations', filename)
+            except Exception as e1:
+                logger.debug(f"PlotScore failed: {e1}")
+                
+            # Method 2: Try basic notation plot
+            try:
+                plot = graph.plot.ScoreHorizontalBar(self.score)
+                plot.run()
+                plot.figure.savefig(filepath)
+                return os.path.join('visualizations', filename)
+            except Exception as e2:
+                logger.debug(f"ScoreHorizontalBar failed: {e2}")
+                
+            # Method 3: Try piano roll visualization
+            try:
+                plot = graph.plot.HorizontalBarPitchSpaceOffset(self.score)
+                plot.run()
+                plot.figure.savefig(filepath, dpi=300, bbox_inches='tight')
+                return os.path.join('visualizations', filename)
+            except Exception as e3:
+                logger.debug(f"HorizontalBarPitchSpaceOffset failed: {e3}")
+                
             return None
             
-        # Generate unique filename
-        filename = f"score_{uuid.uuid4()}.png"
-        filepath = os.path.join('static', 'visualizations', filename)
-        
-        visualization_methods = [
-            ('piano_roll', self._try_piano_roll_visualization),
-            ('pitch_space', self._try_pitch_space_visualization),
-            ('direct', self._try_direct_visualization),
-            ('simple', self._try_simple_visualization)
-        ]
-        
-        successful_method = None
-        for method_name, method in visualization_methods:
-            try:
-                logger.info(f"Attempting {method_name} visualization...")
-                if method(filepath):
-                    logger.info(f"Successfully generated {method_name} visualization")
-                    successful_method = method_name
-                    break
-            except Exception as e:
-                logger.error(f"{method_name} visualization failed: {str(e)}")
-                continue
-        
-        if successful_method:
-            logger.info(f"Final visualization generated using {successful_method} method")
-            relative_path = os.path.join('visualizations', filename)
-            if os.path.exists(filepath):
-                os.chmod(filepath, 0o644)
-                return relative_path
-        
-        logger.error("All visualization methods failed")
-        return None
-
-    def _try_piano_roll_visualization(self, filepath):
-        """Generate enhanced piano roll visualization"""
-        try:
-            plt.figure(figsize=(12, 8))
-            plt.clf()  # Clear any existing plots
-            
-            # Extract note events
-            notes = []
-            for n in self.score.flatten().notesAndRests:
-                if n.isNote:
-                    notes.append((n.offset, n.duration.quarterLength, n.pitch.midi))
-                elif n.isChord:
-                    for pitch in n.pitches:
-                        notes.append((n.offset, n.duration.quarterLength, pitch.midi))
-            
-            if not notes:
-                return False
-                
-            # Create piano roll
-            for start, duration, pitch in notes:
-                plt.hlines(pitch, start, start + duration, color='blue', alpha=0.5, linewidth=5)
-                
-            plt.title("Piano Roll Visualization", pad=20)
-            plt.ylabel("MIDI Pitch")
-            plt.xlabel("Time (Quarter Notes)")
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
-            # Save with high quality
-            plt.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white', format='png')
-            plt.close()
-            
-            return os.path.exists(filepath)
-            
         except Exception as e:
-            logger.error(f"Piano roll visualization failed: {str(e)}")
-            plt.close()
-            return False
+            logger.error(f"All visualization methods failed: {str(e)}")
+            return None
 
-    def _try_direct_visualization(self, filepath):
-        """Attempt direct score visualization using MuseScore"""
+    def analyze(self):
+        """Performs complete analysis of the score"""
         try:
-            # Create a temporary MusicXML file
-            with tempfile.NamedTemporaryFile(suffix='.musicxml', delete=False) as tmp:
-                temp_xml = tmp.name
-                
-            # Save the score as MusicXML
-            self.score.write('musicxml', temp_xml)
+            self.errors = []  # Reset errors before new analysis
+            self.check_parallel_fifths()
+            self.check_parallel_octaves()
+            self.check_voice_leading()
+            self.check_chord_progressions()
+            self.check_cadences()
+            return self.errors
+        except Exception as e:
+            logger.error(f"Error during analysis: {str(e)}", exc_info=True)
+            raise Exception(f"Analysis failed: {str(e)}")
+
+    def check_parallel_fifths(self):
+        """Checks for parallel fifths between voices"""
+        if not self.score:
+            return
             
-            # Try using MuseScore directly
-            musescore_path = self._find_musescore()
-            if musescore_path:
+        try:
+            parts = self.score.parts
+            if len(parts) < 2:  # Need at least 2 voices to check parallels
+                return
+                
+            for part1_idx in range(len(parts) - 1):
+                for part2_idx in range(part1_idx + 1, len(parts)):
+                    notes1 = parts[part1_idx].flatten().notes
+                    notes2 = parts[part2_idx].flatten().notes
+                    
+                    for i in range(len(notes1) - 1):
+                        try:
+                            curr_interval = interval.Interval(noteStart=notes1[i], noteEnd=notes2[i])
+                            next_interval = interval.Interval(noteStart=notes1[i + 1], noteEnd=notes2[i + 1])
+                            
+                            if curr_interval.simpleName == 'P5' and next_interval.simpleName == 'P5':
+                                self.errors.append({
+                                    'type': 'Parallel Fifths',
+                                    'measure': notes1[i].measureNumber,
+                                    'description': f'Parallel fifth movement detected between voices {part1_idx + 1} and {part2_idx + 1}'
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error checking interval at position {i}: {str(e)}")
+                            continue
+                    
+        except Exception as e:
+            logger.error(f"Error in parallel fifths check: {str(e)}", exc_info=True)
+
+    def check_parallel_octaves(self):
+        """Checks for parallel octaves between voices"""
+        if not self.score:
+            return
+            
+        try:
+            parts = self.score.parts
+            if len(parts) < 2:
+                return
+                
+            for part1_idx in range(len(parts) - 1):
+                for part2_idx in range(part1_idx + 1, len(parts)):
+                    notes1 = parts[part1_idx].flatten().notes
+                    notes2 = parts[part2_idx].flatten().notes
+                    
+                    for i in range(len(notes1) - 1):
+                        try:
+                            curr_interval = interval.Interval(noteStart=notes1[i], noteEnd=notes2[i])
+                            next_interval = interval.Interval(noteStart=notes1[i + 1], noteEnd=notes2[i + 1])
+                            
+                            if curr_interval.simpleName == 'P8' and next_interval.simpleName == 'P8':
+                                self.errors.append({
+                                    'type': 'Parallel Octaves',
+                                    'measure': notes1[i].measureNumber,
+                                    'description': f'Parallel octave movement detected between voices {part1_idx + 1} and {part2_idx + 1}'
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error checking interval at position {i}: {str(e)}")
+                            continue
+                    
+        except Exception as e:
+            logger.error(f"Error in parallel octaves check: {str(e)}", exc_info=True)
+
+    def check_voice_leading(self):
+        """Checks voice leading rules"""
+        if not self.score:
+            return
+            
+        try:
+            parts = self.score.parts
+            for part_idx, part in enumerate(parts):
+                notes = part.flatten().notes
+                for i in range(len(notes) - 1):
+                    try:
+                        # Check for large leaps
+                        interval_obj = interval.Interval(noteStart=notes[i], noteEnd=notes[i+1])
+                        interval_size = abs(interval_obj.semitones)
+                        
+                        if interval_size > 12:  # Larger than an octave
+                            self.errors.append({
+                                'type': 'Large Leap',
+                                'measure': notes[i].measureNumber,
+                                'description': f'Large melodic leap of {interval_size} semitones in voice {part_idx + 1}'
+                            })
+                            
+                        # Check for voice crossing with next lower voice
+                        if part_idx < len(parts) - 1:
+                            lower_voice = parts[part_idx + 1].flatten().notes
+                            if i < len(lower_voice):
+                                if notes[i].pitch < lower_voice[i].pitch:
+                                    self.errors.append({
+                                        'type': 'Voice Crossing',
+                                        'measure': notes[i].measureNumber,
+                                        'description': f'Voice {part_idx + 1} crosses below voice {part_idx + 2}'
+                                    })
+                                    
+                    except Exception as e:
+                        logger.warning(f"Error checking voice leading at position {i}: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            logger.error(f"Error in voice leading check: {str(e)}", exc_info=True)
+
+    def check_chord_progressions(self):
+        """Analyzes chord progressions"""
+        if not self.score:
+            return
+            
+        try:
+            chordified = self.score.chordify()
+            prev_chord = None
+            
+            for chord in chordified.recurse().getElementsByClass('Chord'):
+                if prev_chord:
+                    try:
+                        # Check for V-IV progression (considered weak in traditional harmony)
+                        if (prev_chord.root().name == 'G' and chord.root().name == 'F'):
+                            self.errors.append({
+                                'type': 'Weak Progression',
+                                'measure': chord.measureNumber,
+                                'description': 'V-IV progression detected (usually considered weak)'
+                            })
+                    except Exception as e:
+                        logger.warning(f"Error analyzing chord progression: {str(e)}")
+                prev_chord = chord
+                
+        except Exception as e:
+            logger.error(f"Error in chord progression check: {str(e)}", exc_info=True)
+
+    def check_cadences(self):
+        """Verifies proper cadences"""
+        if not self.score:
+            return
+            
+        try:
+            chordified = self.score.chordify()
+            chords = list(chordified.recurse().getElementsByClass('Chord'))
+            
+            if len(chords) >= 2:
+                final_chords = chords[-2:]
                 try:
-                    subprocess.run(
-                        [musescore_path, '-T', '0', '-o', filepath, temp_xml],
-                        check=True, capture_output=True, timeout=30
-                    )
-                    if os.path.exists(filepath):
-                        os.chmod(filepath, 0o644)
-                        os.unlink(temp_xml)
-                        return True
+                    # Check for authentic cadence (V-I)
+                    if not (final_chords[0].root().name == 'G' and final_chords[1].root().name == 'C'):
+                        self.errors.append({
+                            'type': 'Invalid Cadence',
+                            'measure': final_chords[1].measureNumber,
+                            'description': 'Phrase does not end with proper authentic cadence (V-I)'
+                        })
                 except Exception as e:
-                    logger.warning(f"MuseScore direct conversion failed: {str(e)}")
-            
-            # Fallback to music21's built-in converter
-            self.score.write('musicxml.png', fp=filepath)
-            if os.path.exists(filepath):
-                os.chmod(filepath, 0o644)
-                os.unlink(temp_xml)
-                return True
-                
-            return False
-            
+                    logger.warning(f"Error analyzing cadence: {str(e)}")
+                    
         except Exception as e:
-            logger.error(f"Direct visualization failed: {str(e)}")
-            return False
+            logger.error(f"Error in cadence check: {str(e)}", exc_info=True)
 
-    def _try_pitch_space_visualization(self, filepath):
-        """Generate enhanced pitch space visualization"""
-        try:
-            plt.figure(figsize=(12, 8))
-            plt.clf()  # Clear any existing plots
-            
-            # Create pitch space plot
-            plot = graph.plot.ScatterPitchSpaceQuarterLength(self.score)
-            plot.run()
-            
-            plt.title("Pitch Space Visualization", pad=20)
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
-            # Save with high quality
-            plt.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white', format='png')
-            plt.close()
-            
-            return os.path.exists(filepath)
-            
-        except Exception as e:
-            logger.error(f"Pitch space visualization failed: {str(e)}")
-            plt.close()
-            return False
+    def generate_report(self):
+        """Generates detailed analysis report"""
+        return {
+            'total_errors': len(self.errors),
+            'errors_by_type': self._categorize_errors(),
+            'corrections': self._suggest_corrections(),
+            'statistics': {
+                'measures_analyzed': len(self.score.measures(0, None)) if self.score else 0,
+                'common_problems': self._identify_common_problems()
+            }
+        }
 
-    def _try_simple_visualization(self, filepath):
-        """Generate simplified score visualization as last resort"""
-        try:
-            plt.figure(figsize=(12, 8))
-            plt.clf()  # Clear any existing plots
-            
-            # Create a simple representation
-            notes = self.score.flatten().notesAndRests
-            pitches = []
-            times = []
-            
-            for n in notes:
-                if n.isNote:
-                    pitches.append(n.pitch.midi)
-                    times.append(n.offset)
-                elif n.isChord:
-                    for p in n.pitches:
-                        pitches.append(p.midi)
-                        times.append(n.offset)
-            
-            if not pitches:
-                return False
-                
-            plt.scatter(times, pitches, alpha=0.6, c='blue')
-            plt.title("Simple Score Overview", pad=20)
-            plt.ylabel("MIDI Pitch")
-            plt.xlabel("Time (Quarter Notes)")
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
-            # Save with high quality
-            plt.savefig(filepath, dpi=300, bbox_inches='tight', facecolor='white', format='png')
-            plt.close()
-            
-            return os.path.exists(filepath)
-            
-        except Exception as e:
-            logger.error(f"Simple visualization failed: {str(e)}")
-            plt.close()
-            return False
+    def _categorize_errors(self):
+        """Helper method to categorize errors by type"""
+        categories = {}
+        for error in self.errors:
+            if error['type'] not in categories:
+                categories[error['type']] = 0
+            categories[error['type']] += 1
+        return categories
 
-    def _analyze_voice_leading(self, measure, measure_num):
-        """Analyze voice leading in the measure"""
-        try:
-            # Get all chords in the measure
-            chords = measure.recurse().getElementsByClass('Chord')
-            if len(chords) < 2:
-                return  # Need at least 2 chords for voice leading analysis
-
-            for i in range(len(chords) - 1):
-                chord1, chord2 = chords[i], chords[i + 1]
-                
-                # Check for parallel fifths/octaves
-                intervals1 = [interval.Interval(n1, n2) for n1, n2 in zip(chord1.notes, chord2.notes)]
-                for int1, int2 in zip(intervals1[:-1], intervals1[1:]):
-                    if int1.simpleName == int2.simpleName and int1.name in ['P5', 'P8']:
-                        self.errors.append({
-                            'type': 'Parallel Motion',
-                            'measure': measure_num,
-                            'description': f'Parallel {int1.niceName} found between voices'
-                        })
-
-                # Check for voice crossing
-                for v1_idx, v2_idx in [(i, j) for i in range(len(chord1.notes)) for j in range(i+1, len(chord1.notes))]:
-                    if chord1.notes[v1_idx].pitch > chord1.notes[v2_idx].pitch and \
-                       chord2.notes[v1_idx].pitch < chord2.notes[v2_idx].pitch:
-                        self.errors.append({
-                            'type': 'Voice Crossing',
-                            'measure': measure_num,
-                            'description': 'Voice crossing detected between parts'
-                        })
-
-        except Exception as e:
-            logger.warning(f"Voice leading analysis error in measure {measure_num}: {str(e)}")
-
-    def _analyze_harmony(self, measure, measure_num):
-        """Analyze harmony in the measure"""
-        try:
-            # Analyze chords in the measure
-            chords = measure.recurse().getElementsByClass('Chord')
+    def _suggest_corrections(self):
+        """Generates correction suggestions for each error"""
+        corrections = []
+        for error in self.errors:
+            suggestion = {
+                'Parallel Fifths': 'Use contrary or oblique motion between voices',
+                'Parallel Octaves': 'Use contrary or oblique motion between voices',
+                'Large Leap': 'Consider stepwise motion or smaller intervals',
+                'Voice Crossing': 'Keep voices within their designated ranges',
+                'Weak Progression': 'Consider using stronger chord progressions like V-I',
+                'Invalid Cadence': 'End the phrase with an authentic cadence (V-I)'
+            }.get(error['type'], 'Review and revise this section')
             
-            for chord in chords:
-                # Check for dissonant intervals
-                intervals = [interval.Interval(n1, n2) 
-                           for i, n1 in enumerate(chord.notes) 
-                           for n2 in chord.notes[i+1:]]
-                
-                dissonant_intervals = [i for i in intervals 
-                                     if i.simpleName in ['A4', 'd5', 'M7', 'm7', 'M2', 'm2']]
-                
-                if dissonant_intervals:
-                    self.errors.append({
-                        'type': 'Dissonant Harmony',
-                        'measure': measure_num,
-                        'description': f'Dissonant intervals found: {[i.niceName for i in dissonant_intervals]}'
-                    })
-                
-                # Check for incomplete triads
-                if len(chord.pitches) >= 3:
-                    chord_type = chord.commonName
-                    if 'incomplete' in chord_type.lower():
-                        self.errors.append({
-                            'type': 'Incomplete Chord',
-                            'measure': measure_num,
-                            'description': f'Incomplete chord found: {chord_type}'
-                        })
+            corrections.append({
+                'error': error,
+                'suggestion': suggestion
+            })
+        return corrections
 
-        except Exception as e:
-            logger.warning(f"Harmony analysis error in measure {measure_num}: {str(e)}")
+    def _identify_common_problems(self):
+        """Identifies frequently occurring issues"""
+        categories = self._categorize_errors()
+        return [error_type for error_type, count in categories.items() if count > 1]
 
     def generate_pdf_report(self):
-        """Generate PDF report of analysis results"""
+        """Generates a PDF report of the analysis"""
         try:
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
-            story = []
             styles = getSampleStyleSheet()
-            
-            # Title
-            story.append(Paragraph("Harmony Analysis Report", styles['Title']))
+            story = []
+
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                spaceAfter=30
+            )
+            story.append(Paragraph("Harmony Analysis Report", title_style))
             story.append(Spacer(1, 12))
-            
-            # Summary
-            if self.errors:
-                story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
-            else:
-                story.append(Paragraph("No errors found in the analysis.", styles['Heading2']))
-            
+
+            story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
             story.append(Spacer(1, 12))
-            
-            # Detailed Errors
+
             if self.errors:
-                story.append(Paragraph("Detailed Analysis", styles['Heading2']))
+                story.append(Paragraph("Detailed Errors:", styles['Heading2']))
+                story.append(Spacer(1, 12))
+
                 for error in self.errors:
-                    error_text = f"Measure {error['measure']}: {error['type']}\n{error['description']}"
+                    error_text = f"""
+                    <b>Type:</b> {error['type']}<br/>
+                    <b>Measure:</b> {error['measure']}<br/>
+                    <b>Description:</b> {error['description']}
+                    """
                     story.append(Paragraph(error_text, styles['Normal']))
-                    story.append(Spacer(1, 6))
-            
-            # Build PDF
+                    story.append(Spacer(1, 12))
+
+                report = self.generate_report()
+                stats_data = [
+                    ['Statistic', 'Value'],
+                    ['Total Measures Analyzed', str(report['statistics']['measures_analyzed'])],
+                    ['Total Errors', str(report['total_errors'])]
+                ]
+                
+                for error_type, count in report['errors_by_type'].items():
+                    stats_data.append([f'{error_type} Errors', str(count)])
+
+                table = Table(stats_data, colWidths=[300, 200])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 14),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                    ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -1), 12),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                story.append(table)
+
+                story.append(Spacer(1, 20))
+                story.append(Paragraph("Suggested Corrections:", styles['Heading2']))
+                story.append(Spacer(1, 12))
+
+                for correction in report['corrections']:
+                    correction_text = f"""
+                    <b>Issue:</b> {correction['error']['type']}<br/>
+                    <b>Suggestion:</b> {correction['suggestion']}
+                    """
+                    story.append(Paragraph(correction_text, styles['Normal']))
+                    story.append(Spacer(1, 12))
+            else:
+                story.append(Paragraph("No errors found in the score!", styles['Heading2']))
+
             doc.build(story)
             pdf_content = buffer.getvalue()
             buffer.close()
-            
             return pdf_content
             
         except Exception as e:
-            logger.error(f"Error generating PDF report: {str(e)}")
-            raise
+            logger.error(f"Error generating PDF report: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to generate PDF report: {str(e)}")

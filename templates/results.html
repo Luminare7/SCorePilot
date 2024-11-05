@@ -81,18 +81,29 @@
             <div class="card-header">
                 <h2 class="mb-0">Score Visualization</h2>
             </div>
-            <div class="card-body">
-                <div id="scoreVisualization" class="text-center">
-                    {% if visualization_path %}
-                        <img src="{{ url_for('static', filename=visualization_path) }}" 
-                             alt="Score visualization" 
-                             class="img-fluid">
-                    {% else %}
-                        <div class="alert alert-warning">
-                            Score visualization is currently unavailable.
+            <div class="card-body text-center">
+                {% if visualization_path %}
+                    <div class="score-visualization position-relative">
+                        <!-- Loading spinner -->
+                        <div class="visualization-loading position-absolute top-50 start-50 translate-middle">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading visualization...</span>
+                            </div>
                         </div>
-                    {% endif %}
-                </div>
+                        <!-- Score image -->
+                        <img src="{{ url_for('static', filename=visualization_path) }}" 
+                             alt="Musical score visualization" 
+                             class="img-fluid score-image"
+                             onload="this.parentElement.querySelector('.visualization-loading').style.display='none'"
+                             onerror="handleVisualizationError(this)"
+                             style="max-height: 600px; width: auto;">
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Unable to generate score visualization. This might be due to complexity of the score or unsupported notation features.
+                    </div>
+                {% endif %}
             </div>
         </div>
         
@@ -101,4 +112,42 @@
         </div>
     </div>
 </div>
+
+<style>
+.score-visualization {
+    min-height: 200px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.visualization-loading {
+    z-index: 1;
+}
+
+.score-image {
+    max-width: 100%;
+    height: auto;
+    transition: opacity 0.3s ease;
+}
+
+.visualization-error {
+    opacity: 0.7;
+}
+</style>
+
+<script>
+function handleVisualizationError(img) {
+    img.onerror = null;
+    img.src = "{{ url_for('static', filename='images/score-placeholder.png') }}";
+    img.classList.add('visualization-error');
+    img.alt = 'Score visualization unavailable';
+    
+    const errorMessage = document.createElement('div');
+    errorMessage.className = 'alert alert-warning mt-3';
+    errorMessage.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Unable to load score visualization. The score might be too complex or use unsupported notation features.';
+    
+    img.parentElement.appendChild(errorMessage);
+    img.parentElement.querySelector('.visualization-loading').style.display = 'none';
+}
+</script>
 {% endblock %}

@@ -1,3 +1,13 @@
+document.addEventListener('DOMContentLoaded', function() {
+    // File input validation
+    const fileInput = document.getElementById('file');
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            validateFileInput(this);
+        });
+    }
+});
+
 function validateForm() {
     const fileInput = document.getElementById('file');
     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
@@ -5,19 +15,29 @@ function validateForm() {
         return false;
     }
 
-    const file = fileInput.files[0];
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    
-    // Check file extension
-    const extension = file.name.split('.').pop().toLowerCase();
-    if (!['musicxml', 'xml'].includes(extension)) {
-        showError('Invalid file type. Please select a MusicXML file (.musicxml or .xml)');
+    if (!validateFileInput(fileInput)) {
         return false;
     }
 
-    // Check file size
-    if (file.size > maxSize) {
-        showError('File size exceeds 10MB limit');
+    return true;
+}
+
+function validateFileInput(input) {
+    const file = input.files[0];
+    if (!file) return false;
+
+    // Check file extension
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (!['musicxml', 'xml'].includes(extension)) {
+        showError('Please select a valid MusicXML file (.musicxml or .xml)');
+        input.value = '';
+        return false;
+    }
+
+    // Check file size (10MB = 10 * 1024 * 1024 bytes)
+    if (file.size > 10 * 1024 * 1024) {
+        showError('File size exceeds 10MB limit. Please select a smaller file.');
+        input.value = '';
         return false;
     }
 
