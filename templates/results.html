@@ -115,48 +115,41 @@
 }
 </style>
 
-<!-- Add OpenSheetMusicDisplay library -->
-<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.7.1/build/opensheetmusicdisplay.min.js"></script>
+<!-- Replace OpenSheetMusicDisplay with Verovio -->
+<script src="https://www.verovio.org/javascript/latest/verovio-toolkit.js"></script>
 
 <script>
-    const LOAD_TIMEOUT = 10000; // 10 seconds timeout
+// Initialize Verovio
+const verovio = new verovio.toolkit();
 
-    // Create timeout promise
-    const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Loading timeout')), LOAD_TIMEOUT);
-    });
+// Set options for better performance
+verovio.setOptions({
+    pageWidth: document.getElementById('osmdCanvas').clientWidth,
+    pageHeight: 800,
+    scale: 40,
+    adjustPageHeight: true
+});
 
-    // Initialize OSMD with options
-    var osmd = new OpenSheetMusicDisplay("osmdCanvas", {
-        autoResize: true,
-        drawTitle: true,
-        drawSubtitle: true,
-        drawComposer: true,
-        drawLyricist: true,
-        backend: "svg"  // Try SVG backend for better performance
-    });
-
-    // Race between loading and timeout
-    Promise.race([
-        fetch('/get_musicxml')
-            .then(response => {
-                if (!response.ok) throw new Error('Score not available');
-                return response.text();
-            })
-            .then(xml => osmd.load(xml))
-            .then(() => {
-                osmd.render();
-                document.querySelector('.visualization-loading').style.display = 'none';
-            }),
-        timeoutPromise
-    ])
+// Load and render score
+fetch('/get_musicxml')
+    .then(response => {
+        if (!response.ok) throw new Error('Score not available');
+        return response.text();
+    })
+    .then(xml => {
+        // Load the MEI data
+        verovio.loadData(xml);
+        
+        // Render the first page
+        const svg = verovio.renderToSVG(1);
+        document.getElementById('osmdCanvas').innerHTML = svg;
+        document.querySelector('.visualization-loading').style.display = 'none';
+    })
     .catch(error => {
         console.error('Visualization error:', error);
         document.getElementById('osmdCanvas').innerHTML = 
             '<div class="alert alert-warning mt-3">' +
-            (error.message === 'Loading timeout' 
-                ? 'Score visualization is taking longer than expected. Please try refreshing the page.'
-                : 'Unable to render score visualization. The score might be too complex or use unsupported notation features.') +
+            'Unable to render score visualization. The score might be too complex or use unsupported notation features.' +
             '</div>';
         document.querySelector('.visualization-loading').style.display = 'none';
     });
