@@ -1,7 +1,8 @@
 import os
-from flask import Flask, render_template, request, flash, redirect, url_for
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer
+import io
 
 app = Flask(__name__)
 app.secret_key = "harmony_checker_secret_key"  # Required for flash messages
@@ -41,6 +42,10 @@ def index():
                 analysis_results = analyzer.analyze()
                 report = analyzer.generate_report()
                 
+                # Store analyzer in session for PDF generation
+                global current_analyzer
+                current_analyzer = analyzer
+                
                 # Clean up the uploaded file
                 os.remove(filepath)
                 
@@ -57,3 +62,18 @@ def index():
             return redirect(request.url)
             
     return render_template('index.html')
+
+@app.route('/download_pdf')
+def download_pdf():
+    try:
+        if current_analyzer:
+            pdf_content = current_analyzer.generate_pdf_report()
+            return send_file(
+                io.BytesIO(pdf_content),
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name='harmony_analysis_report.pdf'
+            )
+    except Exception as e:
+        flash('Error generating PDF report', 'error')
+        return redirect(url_for('index'))

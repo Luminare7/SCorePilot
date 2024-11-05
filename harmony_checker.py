@@ -1,5 +1,10 @@
 from music21 import *
 import numpy as np
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import io
 
 class HarmonyAnalyzer:
     def __init__(self):
@@ -206,3 +211,85 @@ class HarmonyAnalyzer:
                 'common_problems': [k for k, v in error_types.items() if v > 1]
             }
         }
+
+    def generate_pdf_report(self):
+        """Generates a PDF report of the analysis"""
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            spaceAfter=30
+        )
+        story.append(Paragraph("Harmony Analysis Report", title_style))
+        story.append(Spacer(1, 12))
+
+        # Summary
+        story.append(Paragraph(f"Total Errors Found: {len(self.errors)}", styles['Heading2']))
+        story.append(Spacer(1, 12))
+
+        # Errors by Type
+        if self.errors:
+            story.append(Paragraph("Detailed Errors:", styles['Heading2']))
+            story.append(Spacer(1, 12))
+
+            for error in self.errors:
+                error_text = f"""
+                <b>Type:</b> {error['type']}<br/>
+                <b>Measure:</b> {error['measure']}<br/>
+                <b>Description:</b> {error['description']}
+                """
+                story.append(Paragraph(error_text, styles['Normal']))
+                story.append(Spacer(1, 12))
+
+            # Statistics
+            report = self.generate_report()
+            stats_data = [
+                ['Statistic', 'Value'],
+                ['Total Measures Analyzed', str(report['statistics']['measures_analyzed'])],
+                ['Total Errors', str(report['total_errors'])]
+            ]
+            
+            for error_type, count in report['errors_by_type'].items():
+                stats_data.append([f'{error_type} Errors', str(count)])
+
+            table = Table(stats_data, colWidths=[300, 200])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(table)
+
+            # Suggestions
+            story.append(Spacer(1, 20))
+            story.append(Paragraph("Suggested Corrections:", styles['Heading2']))
+            story.append(Spacer(1, 12))
+
+            for correction in report['corrections']:
+                correction_text = f"""
+                <b>Issue:</b> {correction['error']['type']}<br/>
+                <b>Suggestion:</b> {correction['suggestion']}
+                """
+                story.append(Paragraph(correction_text, styles['Normal']))
+                story.append(Spacer(1, 12))
+        else:
+            story.append(Paragraph("No errors found in the score!", styles['Heading2']))
+
+        doc.build(story)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+        return pdf_content

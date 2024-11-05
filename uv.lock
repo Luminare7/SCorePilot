@@ -686,6 +686,7 @@ dependencies = [
     { name = "flask-sqlalchemy" },
     { name = "music21" },
     { name = "psycopg2-binary" },
+    { name = "reportlab" },
 ]
 
 [package.metadata]
@@ -695,6 +696,20 @@ requires-dist = [
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "music21", specifier = ">=9.3.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
+    { name = "reportlab", specifier = ">=4.2.5" },
+]
+
+[[package]]
+name = "reportlab"
+version = "4.2.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "chardet" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c2/4c/ac8c34dc022fd4f542bc86d266b0bf83ce079917875d16ab52b95c588a34/reportlab-4.2.5.tar.gz", hash = "sha256:5cf35b8fd609b68080ac7bbb0ae1e376104f7d5f7b2d3914c7adc63f2593941f", size = 3581379 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/12/6444906db1bc65d3a8118afb089d53c7eeca0726164f51eb3599de1d0665/reportlab-4.2.5-py3-none-any.whl", hash = "sha256:eb2745525a982d9880babb991619e97ac3f661fae30571b7d50387026ca765ee", size = 1942821 },
 ]
 
 [[package]]
