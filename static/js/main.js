@@ -9,7 +9,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // File size limit in bytes (10MB)
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-    function handleFiles(files) {
+    async function validateFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/validate', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            return {
+                valid: result.valid,
+                error: result.error || 'File validation failed'
+            };
+        } catch (error) {
+            console.error('Validation error:', error);
+            return {
+                valid: false,
+                error: 'File validation failed'
+            };
+        }
+    }
+
+    async function handleFiles(files) {
         if (!files || files.length === 0) {
             fileInfo.classList.add('d-none');
             return;
@@ -18,42 +42,71 @@ document.addEventListener('DOMContentLoaded', function() {
         let validFiles = [];
         let errorMessages = [];
 
-        // Check each file
-        Array.from(files).forEach(file => {
-            // Check file size
-            if (file.size > MAX_FILE_SIZE) {
-                errorMessages.push(`${file.name} is too large. Maximum size is 10MB.`);
-                return;
-            }
+        // Show loading state
+        loadingOverlay.classList.add('active');
+        
+        try {
+            // Process each file
+            for (const file of files) {
+                // Basic client-side validation
+                if (file.size > MAX_FILE_SIZE) {
+                    errorMessages.push(`${file.name} is too large. Maximum size is 10MB.`);
+                    continue;
+                }
 
-            // Check file type
-            const extension = file.name.split('.').pop().toLowerCase();
-            if (!['musicxml', 'xml'].includes(extension)) {
-                errorMessages.push(`${file.name} is not a valid MusicXML file.`);
-                return;
-            }
+                const extension = file.name.split('.').pop().toLowerCase();
+                if (!['musicxml', 'xml'].includes(extension)) {
+                    errorMessages.push(`${file.name} is not a valid MusicXML file.`);
+                    continue;
+                }
 
-            validFiles.push(file);
-        });
+                // Server-side validation
+                const validation = await validateFile(file);
+                if (!validation.valid) {
+                    errorMessages.push(`${file.name}: ${validation.error}`);
+                    continue;
+                }
+
+                validFiles.push(file);
+            }
+        } catch (error) {
+            console.error('Error handling files:', error);
+            errorMessages.push('An error occurred while validating files.');
+        } finally {
+            loadingOverlay.classList.remove('active');
+        }
 
         // Show error messages if any
         if (errorMessages.length > 0) {
-            alert(errorMessages.join('\n'));
+            // Create and show alert
+            const alertContainer = document.createElement('div');
+            alertContainer.className = 'alert alert-warning alert-dismissible fade show';
+            alertContainer.innerHTML = `
+                <h5>File Validation Issues:</h5>
+                <ul class="mb-0">
+                    ${errorMessages.map(msg => `<li>${msg}</li>`).join('')}
+                </ul>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insert alert before the upload form
+            uploadForm.parentNode.insertBefore(alertContainer, uploadForm);
         }
 
         // Update UI with valid files
         if (validFiles.length > 0) {
-            fileList.textContent = Array.from(validFiles)
-                .map(file => file.name)
-                .join(', ');
+            fileList.innerHTML = validFiles.map(file => `
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="fas fa-file-code me-2"></i>
+                    <span>${file.name}</span>
+                </div>
+            `).join('');
             fileInfo.classList.remove('d-none');
             
-            // If files were dragged, update the input
-            if (validFiles !== fileInput.files) {
-                const dt = new DataTransfer();
-                validFiles.forEach(file => dt.items.add(file));
-                fileInput.files = dt.files;
-            }
+            // Update the input with valid files
+            const dt = new DataTransfer();
+            validFiles.forEach(file => dt.items.add(file));
+            fileInput.files = dt.files;
         } else {
             fileInfo.classList.add('d-none');
             fileInput.value = '';
@@ -86,7 +139,13 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadForm.addEventListener('submit', (e) => {
         if (!fileInput.files.length) {
             e.preventDefault();
-            alert('Please select at least one file to upload.');
+            const alertContainer = document.createElement('div');
+            alertContainer.className = 'alert alert-danger alert-dismissible fade show';
+            alertContainer.innerHTML = `
+                <strong>Error:</strong> Please select at least one file to upload.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            uploadForm.parentNode.insertBefore(alertContainer, uploadForm);
             return;
         }
         loadingOverlay.classList.add('active');

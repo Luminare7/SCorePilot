@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, flash, redirect, url_for, send_file, session
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file, session, jsonify
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer, HarmonyError
 from harmony_checker.report_generator import ReportGenerator
@@ -7,7 +7,8 @@ import os
 import logging
 import io
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Optional
+import magic
+from typing import List, Dict, Optional, Tuple
 from contextlib import contextmanager
 
 # Configure logging
@@ -24,6 +25,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'harmony_checker_secret_key'
 UPLOAD_FOLDER = 'tmp'
 ALLOWED_EXTENSIONS = {'musicxml', 'xml'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+ALLOWED_MIME_TYPES = {
+    'application/xml',
+    'text/xml',
+    'application/musicxml',
+    'application/x-musicxml'
+}
 
 # Initialize directories with proper error handling
 required_dirs = [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]
@@ -55,19 +62,58 @@ def safe_file_handler(filepath: str):
             except Exception as e:
                 logger.error(f"Failed to remove file {filepath}: {str(e)}")
 
+def validate_file_type_and_size(file) -> Tuple[bool, str]:
+    """Validate file type and size"""
+    try:
+        # Check file size
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        
+        if size > MAX_FILE_SIZE:
+            return False, f"File size exceeds maximum limit of {MAX_FILE_SIZE/1024/1024:.1f}MB"
+        
+        # Read the first chunk for MIME type detection
+        chunk = file.read(2048)
+        file.seek(0)
+        
+        mime = magic.from_buffer(chunk, mime=True)
+        if mime not in ALLOWED_MIME_TYPES:
+            return False, f"Invalid file type. Detected MIME type: {mime}"
+            
+        return True, ""
+    except Exception as e:
+        logger.error(f"File validation error: {str(e)}")
+        return False, "File validation failed"
+
 def allowed_file(filename: str) -> bool:
     """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def is_valid_musicxml(file_path: str) -> bool:
+def validate_musicxml_structure(file_path: str) -> Tuple[bool, str]:
     """Validate MusicXML file structure"""
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
-        return any(tag in root.tag for tag in ['score-partwise', 'score-timewise'])
-    except (ET.ParseError, Exception) as e:
-        logger.error(f"MusicXML validation error for {file_path}: {str(e)}")
-        return False
+        
+        # Check for required root elements
+        if not any(tag in root.tag for tag in ['score-partwise', 'score-timewise']):
+            return False, "Invalid MusicXML: Missing required root element"
+            
+        # Check for basic required elements
+        required_elements = ['part-list', 'part']
+        missing_elements = [elem for elem in required_elements if root.find(f".//{elem}") is None]
+        
+        if missing_elements:
+            return False, f"Invalid MusicXML: Missing required elements: {', '.join(missing_elements)}"
+            
+        return True, ""
+    except ET.ParseError as e:
+        logger.error(f"MusicXML parsing error: {str(e)}")
+        return False, f"XML parsing error: {str(e)}"
+    except Exception as e:
+        logger.error(f"MusicXML validation error: {str(e)}")
+        return False, "Invalid or corrupted MusicXML file"
 
 def cleanup_visualizations() -> None:
     """Clean up visualization files"""
@@ -84,16 +130,30 @@ def cleanup_visualizations() -> None:
 def analyze_file(file, filename: str) -> Optional[Dict]:
     """Analyze a single file and return results"""
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
+    
     with safe_file_handler(filepath):
+        # Validate file type and size
+        is_valid, error_message = validate_file_type_and_size(file)
+        if not is_valid:
+            raise ValueError(error_message)
+            
         file.save(filepath)
-
-        if not is_valid_musicxml(filepath):
-            raise ValueError("Invalid or corrupted MusicXML file")
-
+        
+        # Validate MusicXML structure
+        is_valid, error_message = validate_musicxml_structure(filepath)
+        if not is_valid:
+            raise ValueError(error_message)
+            
         analyzer = HarmonyAnalyzer()
-        analyzer.load_score(filepath)
-        errors = analyzer.analyze()
+        try:
+            analyzer.load_score(filepath)
+        except Exception as e:
+            raise ValueError(f"Failed to load score: {str(e)}")
+            
+        try:
+            errors = analyzer.analyze()
+        except Exception as e:
+            raise ValueError(f"Analysis failed: {str(e)}")
 
         error_dicts = [{
             'type': error.type,
@@ -136,6 +196,25 @@ def cleanup():
     cleanup_visualizations()
     return '', 204
 
+@app.route('/validate', methods=['POST'])
+def validate_files():
+    """Endpoint for client-side file validation"""
+    if 'file' not in request.files:
+        return jsonify({'valid': False, 'error': 'No file provided'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'valid': False, 'error': 'No file selected'}), 400
+        
+    if not allowed_file(file.filename):
+        return jsonify({'valid': False, 'error': 'Invalid file extension'}), 400
+        
+    is_valid, error_message = validate_file_type_and_size(file)
+    if not is_valid:
+        return jsonify({'valid': False, 'error': error_message}), 400
+        
+    return jsonify({'valid': True}), 200
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """Main route for file upload and analysis"""
@@ -156,12 +235,12 @@ def index():
         return redirect(request.url)
 
     analysis_results = []
-
+    
     for file in files:
         if not allowed_file(file.filename):
-            flash(f'Invalid file type for {file.filename}. Skipping.', 'warning')
+            flash(f'Invalid file type for {file.filename}. Only MusicXML files are allowed.', 'warning')
             continue
-
+            
         try:
             filename = secure_filename(file.filename)
             result = analyze_file(file, filename)
@@ -171,10 +250,10 @@ def index():
             flash(f'Error with {file.filename}: {str(e)}', 'warning')
         except Exception as e:
             logger.error(f"Error processing {file.filename}: {str(e)}", exc_info=True)
-            flash(f'Error processing {file.filename}. Skipping.', 'warning')
+            flash(f'An unexpected error occurred while processing {file.filename}.', 'danger')
 
     if not analysis_results:
-        flash('No valid files were processed successfully.', 'danger')
+        flash('No valid files were processed successfully. Please check the file requirements and try again.', 'danger')
         return redirect(request.url)
 
     return render_template(
@@ -210,12 +289,3 @@ def download_pdf():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
-
-# main.py
-from app import app
-import os
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    host = os.environ.get("HOST", "0.0.0.0")
-    app.run(host=host, port=port)
