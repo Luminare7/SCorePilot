@@ -1,166 +1,203 @@
-# SCorePilot (SCP) - Your Composition Analysis Companion
+# SCorePilot (SCP) - Harmony Analysis Tool
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![Status](https://img.shields.io/badge/status-prototype-orange)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-SCorePilot (SCP) is an intelligent composition analysis tool that aims to become a comprehensive copilot for composers and musicians. Currently, it provides basic harmony and composition rule checking for MusicXML files, with plans to expand into a full-featured composition assistant.
+SCorePilot is a sophisticated music analysis tool that examines musical compositions for adherence to classical harmony rules. Built with Python and music21, it provides detailed analysis of harmony, voice leading, and compositional structure through an intuitive web interface.
 
-## 🎵 Current Features
+## 📚 Table of Contents
+- [Features](#-features)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Technical Documentation](#-technical-documentation)
+- [Architecture](#-architecture)
+- [Development](#-development)
+- [Error Reference](#-error-reference)
+- [FAQ](#-faq)
 
-- MusicXML file analysis
-- Basic harmony rule checking:
-  - Parallel fifths detection
-  - Voice leading analysis
-  - Chord progression validation
-  - Cadence verification
-- PDF report generation with identified issues
-- Simple web interface for file upload
+## 🎵 Features
 
-## 🚀 Quick Start
+### Harmony Analysis
+- **Voice Leading Analysis**
+  - Parallel fifths and octaves detection
+  - Voice crossing identification
+  - Spacing between voices
+  - Melodic interval analysis
 
+### Chord Analysis
+- **Progression Validation**
+  - Root position checking
+  - Weak progression detection (e.g., V-IV)
+  - Cadence analysis
+  - Harmonic rhythm evaluation
+
+### Advanced Checks
+- **Voice Range Verification**
+  - Traditional SATB ranges
+  - Excessive interval jumps
+  - Hidden fifths/octaves between outer voices
+
+### Reporting
+- **Comprehensive PDF Reports**
+  - Severity-based error categorization
+  - Measure-specific error locations
+  - Statistical analysis
+  - Common issues summary
+
+## 🚀 Installation 
+
+### Prerequisites
+- Python 3.8 or higher
+- pip (Python package installer)
+- Virtual environment (recommended)
+
+### Step-by-Step Installation
 ```bash
 # Clone the repository
 git clone https://github.com/Luminare7/scorepilot.git
+cd scorepilot
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the web application
-python app.py
+# Optional: Install MuseScore for score visualization
+# Ubuntu/Debian:
+sudo apt-get install musescore3
+# macOS:
+brew install musescore
 ```
 
-Visit `http://localhost:5000` in your browser to use the application.
+### Dependencies
+- **Core Libraries**
+  - `music21`: Music analysis framework
+  - `Flask`: Web framework
+  - `ReportLab`: PDF generation
+  - `Werkzeug`: File handling and security
 
 ## 💻 Usage
 
-1. Export your score from Sibelius/Finale/MuseScore as MusicXML
-2. Upload the file through the web interface
-3. Click "Analyze"
-4. Download the generated PDF report
+### Web Interface
+1. Start the server:
+   ```bash
+   python main.py
+   ```
+2. Navigate to `http://localhost:5000` in your browser
+3. Upload a MusicXML file
+4. View analysis results and download PDF report
 
-## 🛠 Technical Structure
+### Supported File Formats
+- MusicXML (.musicxml, .xml)
+- Compressed MusicXML (.mxl) - Coming Soon
+
+## 📖 Technical Documentation
+
+### Analysis Modules
+
+#### Harmony Checker
+The `HarmonyAnalyzer` class performs the following checks:
+```python
+analyzer = HarmonyAnalyzer()
+analyzer.load_score("score.musicxml")
+errors = analyzer.analyze()
+```
+
+Key Components:
+- `load_score()`: Parses MusicXML and determines key
+- `analyze()`: Runs all harmony checks
+- `validate_score()`: Ensures score meets minimum requirements
+
+#### Error Types
+Errors are categorized by severity:
+- **High**: Serious rule violations (parallel fifths/octaves)
+- **Medium**: Potential issues (voice leading concerns)
+- **Low**: Stylistic suggestions
+
+## 🏗 Architecture
 
 ```
 scorepilot/
-├── app/
+├── harmony_checker/
 │   ├── __init__.py
-│   ├── analyzer/
-│   │   ├── harmony_checker.py
-│   │   └── score_parser.py
-│   ├── pdf_generator/
-│   │   └── report_builder.py
-│   └── web/
-│       ├── routes.py
-│       └── templates/
-├── tests/
-├── requirements.txt
-└── config.py
+│   ├── analyzer.py        # Core analysis logic
+│   ├── error_types.py     # Error definitions
+│   ├── visualization.py   # Score visualization
+│   ├── report_generator.py# PDF generation
+│   └── utils.py          # Helper functions
+├── app.py                 # Flask application
+├── main.py               # Entry point
+└── requirements.txt
 ```
 
-## 📋 Requirements
+## 🛠 Development
 
-- Python 3.8+
-- Flask
-- music21
-- ReportLab
-- Additional requirements in `requirements.txt`
+### Setting Up Development Environment
+```bash
+# Install development dependencies
+pip install -r requirements-dev.txt
 
-## 🗺 Roadmap
+# Run tests
+python -m pytest tests/
 
-### Phase 1: Foundation (Current)
-- ✅ Basic harmony analysis
-- ✅ Simple web interface
-- ✅ PDF report generation
+# Run linter
+flake8 .
+```
 
-### Phase 2: Enhanced Analysis (Next)
-- [ ] Advanced voice leading analysis
-- [ ] Style-specific rule sets
-- [ ] Real-time analysis
-- [ ] Interactive correction suggestions
+### Adding New Rules
+1. Define new error type in `error_types.py`
+2. Add checking method in `analyzer.py`
+3. Update test cases
+4. Document in error reference
 
-### Phase 3: AI Integration
-- [ ] Machine learning for style analysis
-- [ ] Pattern recognition
-- [ ] Personalized suggestions
-- [ ] Performance optimization
+## 📋 Error Reference
 
-### Phase 4: Comprehensive Copilot
-- [ ] Real-time composition suggestions
-- [ ] Style mimicking
-- [ ] Orchestration assistance
-- [ ] Collaborative features
+### Voice Leading Errors
+- **Parallel Fifths**: Consecutive perfect fifths between voices
+- **Voice Crossing**: Voice moves below a lower voice
+- **Large Leaps**: Melodic intervals larger than an octave
 
-## 🔧 Known Limitations
+### Chord Errors
+- **Non-Root Position**: Final chord not in root position
+- **Weak Cadence**: Non-standard or weak cadential progression
 
-Current version (0.1.0) has several limitations:
+## ❓ FAQ
 
-1. **Analysis Scope**
-   - Limited to basic harmony rules
-   - No style-specific considerations
-   - Basic error detection only
+### General Questions
+**Q: What file formats are supported?**  
+A: Currently, MusicXML (.musicxml, .xml) files are supported.
 
-2. **Technical Limitations**
-   - Single file processing only
-   - Limited to MusicXML format
-   - No real-time analysis
-   - Basic PDF output
+**Q: Do I need MuseScore installed?**  
+A: MuseScore is optional but recommended for score visualization.
 
-3. **Performance**
-   - May be slow with large scores
-   - Memory intensive for complex pieces
+### Technical Questions
+**Q: How are errors detected?**  
+A: The analyzer uses music21's powerful parsing capabilities to analyze note relationships, intervals, and chord progressions.
 
-## 🎯 Future Improvements
-
-1. **Analysis Capabilities**
-   - Implement more advanced music theory rules
-   - Add style-specific analysis
-   - Include orchestration checking
-   - Add counterpoint analysis
-
-2. **User Experience**
-   - Real-time feedback
-   - Interactive corrections
-   - Visual score markup
-   - Integration with DAWs
-
-3. **Technical Enhancements**
-   - API development
-   - Performance optimization
-   - Support for more file formats
-   - Cloud processing capabilities
-
-4. **AI Features**
-   - Style recognition
-   - Composition suggestions
-   - Pattern learning
-   - Personalization
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Areas Needing Attention
-1. Additional music theory rules
-2. Performance optimization
-3. User interface improvements
-4. Testing and validation
-5. Documentation
+**Q: What's the maximum file size?**  
+A: The default limit is 10MB, configurable in app.py.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+## 🤝 Contributing
 
-- music21 library team
-- Flask framework
-- All contributors and testers
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) first.
 
 ## 📬 Contact
 
+- GitHub: [Luminare7](https://github.com/Luminare7)
 - Project Link: [https://github.com/Luminare7/scorepilot](https://github.com/Luminare7/scorepilot)
-- Issue Tracker: [GitHub Issues](https://github.com/Luminare7/scorepilot/issues)
+- Issue Tracker: [Report a bug](https://github.com/Luminare7/scorepilot/issues)
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Luminare7/scorepilot&type=Date)](https://star-history.com/#Luminare7/scorepilot&Date)
 
 ---
 
-**Note**: This is a prototype version aimed at proving the concept. Many features are planned but not yet implemented. We appreciate your patience and welcome your contributions to help make SCorePilot a comprehensive composition assistant.
+Built with ♪♫ by [Luminare7](https://github.com/Luminare7) and contributors.
