@@ -158,8 +158,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📬 Contact
 
-- Project Link: [https://github.com/yourusername/scorepilot](https://github.com/yourusername/scorepilot)
-- Issue Tracker: [GitHub Issues](https://github.com/yourusername/scorepilot/issues)
+- Project Link: [https://github.com/Luminare7/scorepilot](https://github.com/Luminare7/scorepilot)
+- Issue Tracker: [GitHub Issues](https://github.com/Luminare7/scorepilot/issues)
 
 ---
 
