@@ -57,86 +57,95 @@ def cleanup_visualizations():
     except Exception as e:
         logger.error(f"Error cleaning visualizations: {str(e)}")
 
+@app.route('/cleanup')
+def cleanup():
+    cleanup_visualizations()
+    return '', 204  # No content response
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'POST':
-        logger.debug("Processing file upload request")
-        
-        # Cleanup previous visualizations at the start
+    # Clean up visualizations on GET requests (page load/refresh)
+    if request.method == 'GET':
         cleanup_visualizations()
-        
-        # Check if multiple files were uploaded
-        files = request.files.getlist('file')
-        if not files or all(file.filename == '' for file in files):
-            logger.warning("No files selected")
-            flash('Please select at least one file to upload.', 'danger')
-            return redirect(request.url)
+        return render_template('index.html')
 
-        analysis_results = []
-        current_analyzers = []
+    logger.debug("Processing file upload request")
+    
+    # Cleanup previous visualizations at the start
+    cleanup_visualizations()
+    
+    # Check if multiple files were uploaded
+    files = request.files.getlist('file')
+    if not files or all(file.filename == '' for file in files):
+        logger.warning("No files selected")
+        flash('Please select at least one file to upload.', 'danger')
+        cleanup_visualizations()
+        return redirect(request.url)
 
-        for file in files:
-            if not allowed_file(file.filename):
-                logger.warning(f"Invalid file type: {file.filename}")
-                flash(f'Invalid file type for {file.filename}. Skipping.', 'warning')
+    analysis_results = []
+    current_analyzers = []
+
+    for file in files:
+        if not allowed_file(file.filename):
+            logger.warning(f"Invalid file type: {file.filename}")
+            flash(f'Invalid file type for {file.filename}. Skipping.', 'warning')
+            continue
+
+        try:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            logger.debug(f"Saving uploaded file to {filepath}")
+            file.save(filepath)
+
+            # Validate MusicXML structure
+            if not is_valid_musicxml(filepath):
+                os.remove(filepath)
+                flash(f'File {filename} appears to be invalid or corrupted. Skipping.', 'warning')
+                continue
+
+            logger.debug(f"Analyzing {filename}")
+            analyzer = HarmonyAnalyzer()
+
+            try:
+                analyzer.load_score(filepath)
+            except Exception as e:
+                os.remove(filepath)
+                flash(f'Error loading score {filename}: {str(e)}', 'warning')
                 continue
 
             try:
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                logger.debug(f"Saving uploaded file to {filepath}")
-                file.save(filepath)
-
-                # Validate MusicXML structure
-                if not is_valid_musicxml(filepath):
-                    os.remove(filepath)
-                    flash(f'File {filename} appears to be invalid or corrupted. Skipping.', 'warning')
-                    continue
-
-                logger.debug(f"Analyzing {filename}")
-                analyzer = HarmonyAnalyzer()
-
-                try:
-                    analyzer.load_score(filepath)
-                except Exception as e:
-                    os.remove(filepath)
-                    flash(f'Error loading score {filename}: {str(e)}', 'warning')
-                    continue
-
-                try:
-                    file_results = analyzer.analyze()
-                    analysis_results.append({
-                        'filename': filename,
-                        'results': file_results,
-                        'report': analyzer.generate_report(),
-                        'visualization_path': analyzer.visualization_path
-                    })
-                    current_analyzers.append(analyzer)
-                except Exception as e:
-                    flash(f'Error analyzing {filename}: {str(e)}', 'warning')
-
-                # Clean up the uploaded file
-                os.remove(filepath)
-
+                file_results = analyzer.analyze()
+                analysis_results.append({
+                    'filename': filename,
+                    'results': file_results,
+                    'report': analyzer.generate_report(),
+                    'visualization_path': analyzer.visualization_path
+                })
+                current_analyzers.append(analyzer)
             except Exception as e:
-                logger.error(f"Error processing {file.filename}: {str(e)}", exc_info=True)
-                flash(f'Error processing {file.filename}. Skipping.', 'warning')
-                continue
+                flash(f'Error analyzing {filename}: {str(e)}', 'warning')
 
-        if not analysis_results:
-            flash('No valid files were processed successfully.', 'danger')
-            return redirect(request.url)
+            # Clean up the uploaded file
+            os.remove(filepath)
 
-        # Store analyzers in global variable for PDF generation
-        global current_analyzer
-        current_analyzer = current_analyzers[0] if current_analyzers else None
+        except Exception as e:
+            logger.error(f"Error processing {file.filename}: {str(e)}", exc_info=True)
+            flash(f'Error processing {file.filename}. Skipping.', 'warning')
+            continue
 
-        logger.debug("Rendering results template")
-        return render_template('results.html',
-                            batch_results=analysis_results,
-                            has_errors=any(result['results'] for result in analysis_results))
+    if not analysis_results:
+        flash('No valid files were processed successfully.', 'danger')
+        cleanup_visualizations()
+        return redirect(request.url)
 
-    return render_template('index.html')
+    # Store analyzers in global variable for PDF generation
+    global current_analyzer
+    current_analyzer = current_analyzers[0] if current_analyzers else None
+
+    logger.debug("Rendering results template")
+    return render_template('results.html',
+                        batch_results=analysis_results,
+                        has_errors=any(result['results'] for result in analysis_results))
 
 @app.route('/download_pdf')
 def download_pdf():
@@ -146,6 +155,7 @@ def download_pdf():
         if not current_analyzer:
             logger.error("No analyzer available for PDF generation")
             flash('No analysis results available. Please analyze a score first.', 'danger')
+            cleanup_visualizations()
             return redirect(url_for('index'))
 
         logger.debug("Generating PDF report")

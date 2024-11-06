@@ -92,6 +92,14 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingOverlay.classList.add('active');
     });
 
+    // Cleanup on page navigation/refresh
+    window.addEventListener('beforeunload', function() {
+        // Make synchronous cleanup request
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/cleanup', false);  // Synchronous
+        xhr.send();
+    });
+
     // Initialize tooltips and popovers if they exist
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(function (tooltipTriggerEl) {
