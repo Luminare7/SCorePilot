@@ -1,8 +1,135 @@
-.card {
-    margin-bottom: 2rem;
+/* Global Styles */
+:root {
+    --transition-speed: 0.3s;
 }
 
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Card Styles */
+.card {
+    margin-bottom: 2rem;
+    transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+    border: 1px solid var(--bs-border-color);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Form Controls */
 .form-control:focus {
     border-color: var(--bs-primary);
     box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* File Upload Zone */
+.upload-zone {
+    border: 2px dashed var(--bs-border-color);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    transition: all var(--transition-speed);
+    cursor: pointer;
+}
+
+.upload-zone:hover,
+.upload-zone.dragover {
+    border-color: var(--bs-primary);
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.upload-zone .upload-icon {
+    font-size: 3rem;
+    color: var(--bs-primary);
+    margin-bottom: 1rem;
+}
+
+/* Loading Spinner */
+.spinner-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.spinner-overlay.active {
+    display: flex;
+}
+
+/* Analysis Results */
+.error-card {
+    transition: all var(--transition-speed);
+}
+
+.error-card:hover {
+    border-left: 4px solid var(--bs-danger);
+}
+
+.error-icon {
+    font-size: 1.5rem;
+    margin-right: 0.5rem;
+}
+
+/* Score Visualization */
+.score-visualization {
+    max-width: 100%;
+    overflow: hidden;
+    transition: all var(--transition-speed);
+}
+
+.score-image {
+    max-width: 100%;
+    height: auto;
+    transition: all var(--transition-speed);
+}
+
+.visualization-error {
+    opacity: 0.7;
+}
+
+/* PDF Download Button */
+.btn-download {
+    transition: all var(--transition-speed);
+}
+
+.btn-download:hover {
+    transform: translateY(-1px);
+}
+
+/* Footer */
+.footer {
+    margin-top: auto;
+    background-color: var(--bs-dark);
+    border-top: 1px solid var(--bs-border-color);
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+/* Spacing Utilities */
+.section-spacing {
+    margin-bottom: 3rem;
+}
+
+.content-spacing {
+    margin-bottom: 1.5rem;
 }
