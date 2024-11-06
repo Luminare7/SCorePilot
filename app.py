@@ -92,7 +92,7 @@ def index():
             continue
 
         try:
-            filename = secure_filename(file.filename)
+            filename = secure_filename(file.filename) if file.filename else 'untitled'
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             logger.debug(f"Saving uploaded file to {filepath}")
             file.save(filepath)
