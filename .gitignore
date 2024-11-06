@@ -1,0 +1,29 @@
+# Replit specific files
+.replit
+replit.nix
+.breakpoints
+.config/
+.cache/
+.upm/
+
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# IDE specific
+.idea/
+.vscode/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Operating System
+.DS_Store
+Thumbs.db
