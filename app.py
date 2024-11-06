@@ -45,89 +45,97 @@ def is_valid_musicxml(file_path):
         logger.error(f"Error validating MusicXML: {str(e)}")
         return False
 
+def cleanup_visualizations():
+    """Cleanup visualization files from previous analyses"""
+    vis_dir = os.path.join('static', 'visualizations')
+    try:
+        for file in os.listdir(vis_dir):
+            file_path = os.path.join(vis_dir, file)
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+        logger.debug("Successfully cleaned up visualization files")
+    except Exception as e:
+        logger.error(f"Error cleaning visualizations: {str(e)}")
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         logger.debug("Processing file upload request")
         
-        # Check if the post request has the file part
-        if 'file' not in request.files:
-            logger.warning("No file part in request")
-            flash('Please select a file to upload.', 'danger')
-            return redirect(request.url)
-            
-        file = request.files['file']
+        # Cleanup previous visualizations at the start
+        cleanup_visualizations()
         
-        # Check if a file was selected
-        if file.filename == '':
-            logger.warning("No selected file")
-            flash('No file selected. Please choose a MusicXML file to analyze.', 'danger')
+        # Check if multiple files were uploaded
+        files = request.files.getlist('file')
+        if not files or all(file.filename == '' for file in files):
+            logger.warning("No files selected")
+            flash('Please select at least one file to upload.', 'danger')
             return redirect(request.url)
-            
-        # Check file extension
-        if not allowed_file(file.filename):
-            logger.warning(f"Invalid file type: {file.filename}")
-            flash('Invalid file type. Please upload a MusicXML file (.musicxml or .xml).', 'danger')
-            return redirect(request.url)
-            
-        try:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            logger.debug(f"Saving uploaded file to {filepath}")
-            file.save(filepath)
-            
-            # Validate MusicXML structure
-            if not is_valid_musicxml(filepath):
-                os.remove(filepath)
-                flash('The uploaded file appears to be invalid or corrupted. Please ensure it is a valid MusicXML file.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Initializing HarmonyAnalyzer")
-            analyzer = HarmonyAnalyzer()
-            
-            logger.debug("Loading score file")
+
+        analysis_results = []
+        current_analyzers = []
+
+        for file in files:
+            if not allowed_file(file.filename):
+                logger.warning(f"Invalid file type: {file.filename}")
+                flash(f'Invalid file type for {file.filename}. Skipping.', 'warning')
+                continue
+
             try:
-                analyzer.load_score(filepath)
-            except Exception as e:
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                logger.debug(f"Saving uploaded file to {filepath}")
+                file.save(filepath)
+
+                # Validate MusicXML structure
+                if not is_valid_musicxml(filepath):
+                    os.remove(filepath)
+                    flash(f'File {filename} appears to be invalid or corrupted. Skipping.', 'warning')
+                    continue
+
+                logger.debug(f"Analyzing {filename}")
+                analyzer = HarmonyAnalyzer()
+
+                try:
+                    analyzer.load_score(filepath)
+                except Exception as e:
+                    os.remove(filepath)
+                    flash(f'Error loading score {filename}: {str(e)}', 'warning')
+                    continue
+
+                try:
+                    file_results = analyzer.analyze()
+                    analysis_results.append({
+                        'filename': filename,
+                        'results': file_results,
+                        'report': analyzer.generate_report(),
+                        'visualization_path': analyzer.visualization_path
+                    })
+                    current_analyzers.append(analyzer)
+                except Exception as e:
+                    flash(f'Error analyzing {filename}: {str(e)}', 'warning')
+
+                # Clean up the uploaded file
                 os.remove(filepath)
-                flash(f'Error loading score: {str(e)}. Please ensure the file contains valid musical notation.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Analyzing score")
-            try:
-                analysis_results = analyzer.analyze()
-                logger.debug(f"Analysis complete. Found {len(analysis_results)} issues")
+
             except Exception as e:
-                os.remove(filepath)
-                flash(f'Error analyzing score: {str(e)}. Please check if the score contains valid musical content.', 'danger')
-                return redirect(request.url)
-            
-            logger.debug("Generating report")
-            report = analyzer.generate_report()
-            
-            # Store analyzer in global variable for PDF generation
-            global current_analyzer
-            current_analyzer = analyzer
-            
-            # Get visualization path
-            visualization_path = analyzer.visualization_path
-            
-            # Clean up the uploaded file
-            logger.debug("Cleaning up uploaded file")
-            os.remove(filepath)
-            
-            logger.debug("Rendering results template")
-            return render_template('results.html', 
-                                results=analysis_results,
-                                report=report,
-                                has_errors=bool(analysis_results),
-                                visualization_path=visualization_path)
-                                
-        except Exception as e:
-            logger.error(f"Error during analysis: {str(e)}", exc_info=True)
-            flash('An unexpected error occurred. Please try again or contact support if the problem persists.', 'danger')
+                logger.error(f"Error processing {file.filename}: {str(e)}", exc_info=True)
+                flash(f'Error processing {file.filename}. Skipping.', 'warning')
+                continue
+
+        if not analysis_results:
+            flash('No valid files were processed successfully.', 'danger')
             return redirect(request.url)
-            
+
+        # Store analyzers in global variable for PDF generation
+        global current_analyzer
+        current_analyzer = current_analyzers[0] if current_analyzers else None
+
+        logger.debug("Rendering results template")
+        return render_template('results.html',
+                            batch_results=analysis_results,
+                            has_errors=any(result['results'] for result in analysis_results))
+
     return render_template('index.html')
 
 @app.route('/download_pdf')
@@ -139,10 +147,13 @@ def download_pdf():
             logger.error("No analyzer available for PDF generation")
             flash('No analysis results available. Please analyze a score first.', 'danger')
             return redirect(url_for('index'))
-            
+
         logger.debug("Generating PDF report")
         pdf_content = current_analyzer.generate_pdf_report()
-        
+
+        # Cleanup visualizations after PDF generation
+        cleanup_visualizations()
+
         logger.debug("Sending PDF file")
         return send_file(
             io.BytesIO(pdf_content),
@@ -152,6 +163,8 @@ def download_pdf():
         )
     except Exception as e:
         logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
+        # Cleanup visualizations in case of error
+        cleanup_visualizations()
         flash('Error generating PDF report. Please try analyzing the score again.', 'danger')
         return redirect(url_for('index'))
 

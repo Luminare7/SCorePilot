@@ -5,31 +5,31 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h2 class="text-center mb-0">Upload Music Score</h2>
+                <h2 class="text-center mb-0">Upload Music Scores</h2>
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data" class="text-center" id="uploadForm">
                     <div class="upload-zone mb-4" id="dropZone">
-                        <input type="file" class="d-none" id="file" name="file" accept=".musicxml,.xml">
+                        <input type="file" class="d-none" id="file" name="file" accept=".musicxml,.xml" multiple>
                         <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                        <h4>Drag and drop your MusicXML file here</h4>
+                        <h4>Drag and drop your MusicXML files here</h4>
                         <p class="text-muted">or click to browse</p>
                         <div class="mt-2">
                             <small class="text-muted">
-                                Accepted formats: .musicxml, .xml (Max size: 10MB)
+                                Accepted formats: .musicxml, .xml (Max size: 10MB per file)
                             </small>
                         </div>
                         <div id="fileInfo" class="mt-3 d-none">
-                            <p class="mb-2">Selected file:</p>
+                            <p class="mb-2">Selected files:</p>
                             <div class="alert alert-info">
                                 <i class="fas fa-file-code me-2"></i>
-                                <span id="fileName">No file selected</span>
+                                <span id="fileList">No files selected</span>
                             </div>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary" id="submitBtn">
                         <i class="fas fa-analyze me-2"></i>
-                        Analyze Score
+                        Analyze Scores
                     </button>
                 </form>
             </div>
@@ -43,7 +43,7 @@
         <div class="spinner-border text-primary mb-3" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <h5 class="text-white">Analyzing your score...</h5>
+        <h5 class="text-white">Analyzing your scores...</h5>
     </div>
 </div>
 {% endblock %}
