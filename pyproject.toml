@@ -12,5 +12,4 @@ dependencies = [
     "reportlab>=4.2.5",
     "werkzeug",
     "numpy",
-    "pypdf2>=3.0.1",
 ]

@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('file');
     const fileInfo = document.getElementById('fileInfo');
-    const fileList = document.getElementById('fileList');
+    const fileName = document.getElementById('fileName');
     const uploadForm = document.getElementById('uploadForm');
     const loadingOverlay = document.getElementById('loadingOverlay');
 
@@ -10,50 +10,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
     function handleFiles(files) {
-        if (!files.length) {
-            fileInfo.classList.add('d-none');
-            fileList.innerHTML = 'No files selected';
-            return;
-        }
+        const file = files[0];
+        
+        if (!file) return;
 
-        let validFiles = true;
-        let fileListHTML = '';
-
-        Array.from(files).forEach(file => {
-            // Check file size
-            if (file.size > MAX_FILE_SIZE) {
-                alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
-                validFiles = false;
-                return;
-            }
-
-            // Check file type
-            const extension = file.name.split('.').pop().toLowerCase();
-            if (!['musicxml', 'xml'].includes(extension)) {
-                alert(`File "${file.name}" is not a valid MusicXML file (.musicxml or .xml)`);
-                validFiles = false;
-                return;
-            }
-
-            fileListHTML += `
-                <div class="mb-2">
-                    <i class="fas fa-file-code me-2"></i>
-                    ${file.name}
-                </div>`;
-        });
-
-        if (!validFiles) {
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
+            alert('File is too large. Maximum size is 10MB.');
             fileInput.value = '';
             return;
         }
 
-        fileList.innerHTML = fileListHTML;
+        // Check file type
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!['musicxml', 'xml'].includes(extension)) {
+            alert('Please select a valid MusicXML file (.musicxml or .xml)');
+            fileInput.value = '';
+            return;
+        }
+
+        // Update UI with file info
+        fileName.textContent = file.name;
         fileInfo.classList.remove('d-none');
         
-        // If files were dragged, update the input
-        if (files instanceof FileList) {
-            fileInput.files = files;
-        }
+        // If file was dragged, update the input
+        fileInput.files = files;
     }
 
     // Click handling
@@ -82,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function() {
     uploadForm.addEventListener('submit', (e) => {
         if (!fileInput.files.length) {
             e.preventDefault();
-            alert('Please select at least one file to upload.');
+            alert('Please select a file to upload.');
             return;
         }
         loadingOverlay.classList.add('active');
