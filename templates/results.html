@@ -51,17 +51,16 @@
                                 <!-- Score Visualizations -->
                                 <div class="row mt-4">
                                     {% if result.visualization_path %}
-                                    <div class="col-12 {% if result.piano_roll_path %}col-md-6{% endif %} mb-4">
+                                    <div class="col-12 mb-4">
                                         <div class="score-visualization">
-                                            <h4>Score Visualization</h4>
+                                            <h4>Classical Score</h4>
                                             <img src="{{ url_for('static', filename=result.visualization_path) }}" 
-                                                 alt="Musical score visualization" 
-                                                 class="img-fluid score-image"
-                                                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.classList.add('visualization-error');">
+                                                 alt="Classical score visualization" 
+                                                 class="img-fluid score-image">
                                             
                                             <!-- Print Button -->
                                             <div class="text-center mt-3">
-                                                <button onclick="window.print()" class="btn btn-primary">
+                                                <button onclick="window.print()" class="btn btn-primary print-score">
                                                     <i class="fas fa-print me-2"></i>
                                                     Print Score
                                                 </button>
@@ -71,12 +70,11 @@
                                     {% endif %}
                                     
                                     {% if result.piano_roll_path %}
-                                    <div class="col-12 {% if result.visualization_path %}col-md-6{% endif %} mb-4 piano-roll">
+                                    <div class="col-12 mb-4 piano-roll">
                                         <h4>Piano Roll View</h4>
                                         <img src="{{ url_for('static', filename=result.piano_roll_path) }}" 
                                              alt="Piano roll visualization" 
-                                             class="img-fluid score-image"
-                                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.classList.add('visualization-error');">
+                                             class="img-fluid score-image">
                                     </div>
                                     {% endif %}
                                 </div>

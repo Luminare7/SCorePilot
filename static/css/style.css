@@ -136,20 +136,30 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Print Styles */
 @media print {
-    /* Hide non-essential elements when printing */
-    nav, footer, .btn-download, .piano-roll {
+    /* Hide everything except the score when printing */
+    body * {
+        visibility: hidden;
+    }
+    
+    .score-visualization, .score-visualization * {
+        visibility: visible;
+    }
+    
+    .score-visualization {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 2cm;
+    }
+    
+    .print-score {
         display: none !important;
     }
     
-    /* Ensure score takes full page width */
-    .score-visualization {
-        width: 100% !important;
-        max-width: none !important;
+    /* Ensure proper page breaks */
+    .score-image {
         page-break-inside: avoid;
-    }
-    
-    /* Add proper margins */
-    @page {
-        margin: 2cm;
+        max-width: 100% !important;
     }
 }

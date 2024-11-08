@@ -70,47 +70,35 @@ class MIDIHandler:
             # Convert MIDI to music21 stream
             score = music21.converter.parse(midi_file)
             
-            # Enhance score layout for classical notation
-            for part in score.parts:
-                # Set proper clef
-                if not part.recurse().getElementsByClass('Clef'):
-                    part.insert(0, music21.clef.TrebleClef())
-                
-                # Add measure numbers
-                for measure in part.getElementsByClass('Measure'):
-                    measure.number = measure.measureNumber
-                
-                # Add dynamics if missing
-                if not part.recurse().getElementsByClass('Dynamic'):
-                    part.insert(0, music21.dynamics.Dynamic('mf'))
-            
-            # Add title and composer
-            score.metadata = music21.metadata.Metadata()
-            score.metadata.title = os.path.splitext(os.path.basename(midi_file))[0]
-            score.metadata.composer = 'Generated Score'
-            
-            # Configure layout for printing
+            # Configure score layout
             score.makeNotation()
             
-            # Write to PNG with high quality
-            score.write('lily.png', fp=output_path, dpi=300)
+            # Set page layout
+            for p in score.parts:
+                p.insert(0, music21.layout.StaffLayout(staffLines=5))
+                
+            # Add proper clefs and time signatures
+            for part in score.parts:
+                if not part.recurse().getElementsByClass('Clef'):
+                    part.insert(0, music21.clef.TrebleClef())
+                if not part.recurse().getElementsByClass('TimeSignature'):
+                    part.insert(0, music21.meter.TimeSignature('4/4'))
             
-            return True, "Successfully created printable score visualization"
+            # Configure LilyPond settings for better output
+            settings = {
+                'papersize': 'a4',
+                'line-width': 180,
+                'staff-size': 20,
+                'page-limit': None
+            }
+            
+            # Write score using LilyPond backend
+            score.write('lily.png', fp=output_path, **settings)
+            
+            return True, "Successfully created classical score visualization"
         except Exception as e:
             logger.error(f"Error creating score visualization: {str(e)}")
             return False, f"Failed to create score visualization: {str(e)}"
-
-    @staticmethod
-    def estimate_tempo(midi_data: pretty_midi.PrettyMIDI) -> float:
-        """Estimate tempo with fallback for single-note cases"""
-        try:
-            if midi_data.estimate_tempo() > 0:
-                return midi_data.estimate_tempo()
-        except:
-            pass
-        
-        # Fallback tempo if estimation fails
-        return 120.0
 
     @staticmethod
     def create_piano_roll(midi_file: str, output_path: str) -> Tuple[bool, str]:
@@ -171,12 +159,8 @@ class MIDIHandler:
             y_labels = [pretty_midi.note_number_to_name(n) for n in y_ticks]
             plt.yticks(y_ticks, y_labels)
             
-            # Add title with song information using estimated tempo
-            tempo = MIDIHandler.estimate_tempo(midi_data)
-            title = f"Piano Roll Visualization\nTempo: {int(tempo)} BPM"
-            if midi_data.time_signature_changes:
-                ts = midi_data.time_signature_changes[0]
-                title += f"\nTime Signature: {ts.numerator}/{ts.denominator}"
+            # Add title with song information
+            title = "Piano Roll Visualization"
             plt.title(title)
             
             # Adjust layout to prevent label cutoff
@@ -197,7 +181,6 @@ class MIDIHandler:
         """Get detailed information about MIDI file"""
         try:
             midi_data = pretty_midi.PrettyMIDI(midi_file)
-            tempo = MIDIHandler.estimate_tempo(midi_data)
             
             # Fix instrument name retrieval
             instrument_names = []
@@ -210,7 +193,7 @@ class MIDIHandler:
             
             return {
                 'length': round(midi_data.get_end_time(), 2),
-                'tempo': round(tempo, 2),
+                'tempo': 120.0,  # Default tempo
                 'time_signature': f"{midi_data.time_signature_changes[0].numerator}/{midi_data.time_signature_changes[0].denominator}" if midi_data.time_signature_changes else "4/4",
                 'key_signature': midi_data.key_signature_changes[0].key_number if midi_data.key_signature_changes else 0,
                 'instrument_names': instrument_names,
