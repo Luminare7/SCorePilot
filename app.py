@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, render_template, request, flash, redirect, url_for, send_file, session, jsonify
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer, HarmonyError
@@ -301,15 +300,22 @@ def download_generated_music():
             flash('No generated music available. Please generate music first.', 'danger')
             return redirect(url_for('index'))
             
+        # If music_data is already bytes, use it directly
+        if isinstance(music_data, bytes):
+            data = music_data
+        else:
+            # If it's a string, encode it
+            data = music_data.encode()
+            
         return send_file(
-            io.BytesIO(music_data.encode()),
+            io.BytesIO(data),
             mimetype='audio/midi',
             as_attachment=True,
             download_name='generated_music.mid'
         )
         
     except Exception as e:
-        logger.error(f"Music download failed: {str(e)}", exc_info=True)
+        logger.error(f"Music download failed: {str(e)}")
         flash('Error downloading generated music.', 'danger')
         return redirect(url_for('index'))
 
@@ -339,4 +345,4 @@ def download_pdf():
         return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)
