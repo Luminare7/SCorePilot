@@ -13,29 +13,18 @@ class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         try:
-            # Configure music21 environment first
-            music21.environment.set('musicxmlPath', '/usr/bin/musescore')
-            music21.environment.set('graphicsPath', '/tmp')
-            music21.environment.set('directoryScratch', '/tmp')
-            
-            # Parse MIDI file with music21
+            # Parse MIDI file directly with music21
             score = music21.converter.parse(midi_file)
             
             # Create output paths
             base_name = os.path.splitext(os.path.basename(midi_file))[0]
             xml_path = os.path.join('static', 'visualizations', f"{base_name}.musicxml")
             
-            # Ensure at least two voices
-            if len(score.parts) < 2:
-                original_part = score.parts[0] if score.parts else None
-                if original_part:
-                    # Create new part
-                    new_part = music21.stream.Part()
-                    # Copy notes from original part and transpose down an octave
-                    for note in original_part.recurse().notes:
-                        new_note = note.transpose(-12)
-                        new_part.append(new_note)
-                    score.append(new_part)
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(xml_path), exist_ok=True)
+            
+            # Clean up the score
+            score.makeNotation()
             
             # Add missing elements if needed
             for part in score.parts:
@@ -49,18 +38,16 @@ class MIDIHandler:
             # Write MusicXML
             score.write('musicxml', fp=xml_path)
             
-            # Create visualization using direct music21 methods
+            # Create visualization using music21's built-in plotter
             try:
-                score.write('musicxml.png', fp=os.path.join('static', 'visualizations', f"{base_name}_score.png"))
-            except Exception as e:
-                logger.warning(f"Score visualization failed: {str(e)}")
-                # Fallback to piano roll visualization
                 for part in score.parts:
                     part.plot('pianoroll',
                              title=f'Piano Score - {base_name}',
                              saved=True,
                              filepath=os.path.join('static', 'visualizations', f"{base_name}_score.png"))
                     break
+            except Exception as e:
+                logger.warning(f"Score visualization failed: {str(e)}")
             
             return True, xml_path, "Successfully converted MIDI to MusicXML"
         except Exception as e:
