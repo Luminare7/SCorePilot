@@ -1,4 +1,5 @@
 import os
+import music21
 from openai import OpenAI
 from typing import Dict, Optional
 
@@ -11,29 +12,29 @@ class MusicGenerator:
         Generate music using OpenAI's API based on the given prompt and style
         """
         try:
-            # Prepare the complete prompt with style if provided
             complete_prompt = f"Generate a {style} piece of music: {prompt}" if style else prompt
             
-            # Make API call to generate music using the latest API
-            response = self.client.completions.create(
-                model="gpt-4",  # Using GPT-4 for music generation
-                prompt=complete_prompt,
-                max_tokens=1024,
-                temperature=0.7,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0
+            # Use the chat completion API instead of completions
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",  # Use GPT-3.5-turbo instead of GPT-4
+                messages=[
+                    {"role": "system", "content": "You are a music composer assistant that creates MusicXML format compositions. Provide the output in valid MusicXML format only."},
+                    {"role": "user", "content": complete_prompt}
+                ],
+                temperature=0.7
             )
             
-            # Convert the response to MIDI-compatible format
-            # Note: This is a simplified version, in practice you'd need to convert
-            # the text response to actual MIDI data
-            music_data = response.choices[0].text
+            # Extract the generated music content
+            music_data = response.choices[0].message.content
+            
+            # Basic validation of MusicXML format
+            if not (music_data.startswith('<?xml') or music_data.startswith('<score-partwise>')):
+                raise ValueError("Generated content is not in valid MusicXML format")
             
             return {
                 "success": True,
                 "music_data": music_data,
-                "format": "midi"
+                "format": "musicxml"
             }
             
         except Exception as e:
