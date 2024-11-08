@@ -13,6 +13,11 @@ class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         try:
+            # Configure music21 environment first
+            music21.environment.set('musicxmlPath', '/usr/bin/musescore')
+            music21.environment.set('graphicsPath', '/tmp')
+            music21.environment.set('directoryScratch', '/tmp')
+            
             # Parse MIDI file with music21
             score = music21.converter.parse(midi_file)
             
@@ -22,7 +27,6 @@ class MIDIHandler:
             
             # Ensure at least two voices
             if len(score.parts) < 2:
-                # Create a second voice by copying and transposing the first voice
                 original_part = score.parts[0] if score.parts else None
                 if original_part:
                     # Create new part
@@ -45,7 +49,7 @@ class MIDIHandler:
             # Write MusicXML
             score.write('musicxml', fp=xml_path)
             
-            # Create visualization
+            # Create visualization using direct music21 methods
             try:
                 score.write('musicxml.png', fp=os.path.join('static', 'visualizations', f"{base_name}_score.png"))
             except Exception as e:
