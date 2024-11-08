@@ -260,6 +260,54 @@ def download_musicxml(filename):
         flash('Error downloading MusicXML file', 'danger')
         return redirect(url_for('index'))
 
+@app.route('/download-generated-music')
+def download_generated_music():
+    try:
+        music_data = session.get('generated_music')
+        if not music_data:
+            flash('No generated music available. Please generate music first.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Determine file type and prepare response
+        return send_file(
+            io.BytesIO(music_data),
+            mimetype='audio/midi',
+            as_attachment=True,
+            download_name='generated_music.mid'
+        )
+    except Exception as e:
+        logger.error(f"Error downloading generated music: {str(e)}")
+        flash('Error downloading generated music', 'danger')
+        return redirect(url_for('index'))
+
+@app.route('/generate-music', methods=['POST'])
+def generate_music():
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        style = data.get('style', '')
+        
+        generator = MusicGenerator()
+        result = generator.generate_music(prompt, style)
+        
+        if not result['success']:
+            return jsonify({
+                'error': result['error'],
+                'error_type': result.get('error_type', 'unknown')
+            }), 400
+            
+        # Store the generated music in session
+        session['generated_music'] = result['music_data']
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Music generation failed: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'error_type': 'unexpected_error'
+        }), 500
+
 @app.route('/download_pdf')
 def download_pdf():
     """Generate and download PDF report"""
