@@ -11,8 +11,8 @@ class MusicGenerator:
         self._cache = {}  # Simple memory cache
         
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
+        stop=stop_after_attempt(5),  # Increase max attempts
+        wait=wait_exponential(multiplier=2, min=10, max=60),  # Longer waits
         reraise=True
     )
     def _make_api_call(self, messages, temperature):
@@ -21,16 +21,16 @@ class MusicGenerator:
                 model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=temperature,
-                max_tokens=2000,  # Add token limit
-                presence_penalty=0.6,  # Add presence penalty
-                frequency_penalty=0.6  # Add frequency penalty
+                max_tokens=1000,  # Reduce tokens to avoid rate limits
+                presence_penalty=0.6,
+                frequency_penalty=0.6
             )
         except Exception as e:
             if "rate limits exceeded" in str(e).lower():
-                time.sleep(20)  # Add delay before retry
+                time.sleep(30)  # Longer delay for rate limits
                 raise
             elif "network" in str(e).lower():
-                time.sleep(5)  # Add shorter delay for network issues
+                time.sleep(10)  # Longer delay for network issues
                 raise
             else:
                 raise

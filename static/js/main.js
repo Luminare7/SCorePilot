@@ -1,33 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('file');
-    const fileInfo = document.getElementById('fileInfo');
-    const fileList = document.getElementById('fileList');
-    const uploadForm = document.getElementById('uploadForm');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    const generateMusicForm = document.getElementById('generateMusicForm');
-    const generationResult = document.getElementById('generationResult');
-
-    // File Upload Handling
-    if (dropZone && fileInput) {
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-            document.body.addEventListener(eventName, preventDefaults, false);
-        });
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, highlight, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, unhighlight, false);
-        });
-
-        dropZone.addEventListener('drop', handleDrop, false);
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', handleFiles);
-    }
-
+    // ... previous code remains the same until line 46 ...
+    
     // Music Generation Form Handling
     if (generateMusicForm) {
         generateMusicForm.addEventListener('submit', async (e) => {
@@ -44,14 +17,19 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingOverlay.classList.add('active');
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                
                 const response = await fetch('/generate-music', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ prompt, style })
+                    body: JSON.stringify({ prompt, style }),
+                    signal: controller.signal
                 });
                 
+                clearTimeout(timeoutId);
                 const result = await response.json();
                 
                 if (!response.ok) {
@@ -62,26 +40,56 @@ document.addEventListener('DOMContentLoaded', function() {
                 generationResult.scrollIntoView({ behavior: 'smooth' });
             } catch (error) {
                 console.error('Music generation error:', error);
-                const errorMessage = error.message || 'An unexpected error occurred';
+                let errorMessage, errorType;
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Request timed out';
+                    errorType = 'timeout';
+                } else if (error instanceof TypeError && error.message.includes('network')) {
+                    errorMessage = 'Network connection failed';
+                    errorType = 'network_error';
+                } else {
+                    errorMessage = error.message || 'An unexpected error occurred';
+                    errorType = error.type || 'unexpected_error';
+                }
+                
                 const alertContainer = document.createElement('div');
-                alertContainer.className = 'alert alert-danger alert-dismissible fade show mt-3';
+                alertContainer.className = 'alert alert-warning alert-dismissible fade show mt-3';
+                
+                let errorText = '';
+                if (errorType === 'rate_limit') {
+                    errorText = 'The service is currently experiencing high demand. Please wait a moment and try again.';
+                } else if (errorType === 'network_error' || errorType === 'timeout') {
+                    errorText = 'Unable to connect to the service. Please check your connection and try again.';
+                } else {
+                    errorText = 'An unexpected error occurred. Please try again in a few moments.';
+                }
+                
                 alertContainer.innerHTML = `
-                    <strong>Error:</strong> ${errorMessage}
-                    <p class="mb-0 mt-2">
-                        ${error.type === 'network_error' ? 
-                        'Please check your internet connection and try again.' : 
-                        'Please try again in a few moments.'}
-                    </p>
+                    <strong>Notice:</strong> ${errorMessage}
+                    <p class="mb-0 mt-2">${errorText}</p>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 `;
                 generateMusicForm.appendChild(alertContainer);
+                
+                // Add retry button for rate limit errors and network issues
+                if (errorType === 'rate_limit' || errorType === 'network_error' || errorType === 'timeout') {
+                    const retryBtn = document.createElement('button');
+                    retryBtn.className = 'btn btn-primary mt-3';
+                    retryBtn.innerHTML = '<i class="fas fa-redo me-2"></i>Try Again';
+                    retryBtn.onclick = () => {
+                        generateMusicForm.querySelectorAll('.alert').forEach(alert => alert.remove());
+                        generateMusicForm.dispatchEvent(new Event('submit'));
+                    };
+                    generateMusicForm.appendChild(retryBtn);
+                }
             } finally {
                 loadingOverlay.classList.remove('active');
             }
         });
     }
 
-    // Utility Functions
+    // Utility Functions remain the same...
     function preventDefaults(e) {
         e.preventDefault();
         e.stopPropagation();
