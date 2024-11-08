@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // Increase timeout to 60 seconds
                 
                 const response = await fetch('/generate-music', {
                     method: 'POST',
@@ -68,14 +68,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ prompt, style }),
-                    signal: controller.signal
+                    signal: controller.signal,
+                    timeout: 60000  // Increase timeout to 60 seconds
                 });
                 
                 clearTimeout(timeoutId);
-                const result = await response.json();
                 
                 if (!response.ok) {
-                    throw { message: result.error, type: result.error_type };
+                    throw new Error(response.statusText || 'Network error occurred');
+                }
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    throw new Error(result.error);
                 }
                 
                 generationResult.classList.remove('d-none');
@@ -85,10 +91,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 let errorMessage, errorType;
                 
                 if (error.name === 'AbortError') {
-                    errorMessage = 'Request timed out';
+                    errorMessage = 'Request timed out. Please try again.';
                     errorType = 'timeout';
                 } else if (error instanceof TypeError && error.message.includes('network')) {
-                    errorMessage = 'Network connection failed';
+                    errorMessage = 'Network connection failed. Please check your connection.';
                     errorType = 'network_error';
                 } else {
                     errorMessage = error.message || 'An unexpected error occurred';
@@ -108,7 +114,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 alertContainer.innerHTML = `
-                    <strong>Notice:</strong> ${errorMessage}
+                    <strong>Error:</strong> ${errorMessage}
                     <p class="mb-0 mt-2">${errorText}</p>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 `;

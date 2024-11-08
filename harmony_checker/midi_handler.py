@@ -59,6 +59,35 @@ class MIDIHandler:
             return False, None, f"Failed to convert MIDI: {str(e)}"
 
     @staticmethod
+    def create_score_visualization(midi_file: str, output_path: str) -> Tuple[bool, str]:
+        try:
+            # Convert MIDI to music21 stream
+            score = music21.converter.parse(midi_file)
+            
+            # Create piano score layout
+            for part in score.parts:
+                # Set proper clef
+                if not part.recurse().getElementsByClass('Clef'):
+                    part.insert(0, music21.clef.TrebleClef())
+                
+                # Add measure numbers
+                for measure in part.getElementsByClass('Measure'):
+                    measure.number = measure.measureNumber
+            
+            # Add title
+            title = os.path.splitext(os.path.basename(midi_file))[0]
+            score.metadata = music21.metadata.Metadata()
+            score.metadata.title = title
+            
+            # Write to PNG
+            score.write('lily.png', fp=output_path)
+            
+            return True, "Successfully created score visualization"
+        except Exception as e:
+            logger.error(f"Error creating score visualization: {str(e)}")
+            return False, f"Failed to create score visualization: {str(e)}"
+
+    @staticmethod
     def estimate_tempo(midi_data: pretty_midi.PrettyMIDI) -> float:
         """Estimate tempo with fallback for single-note cases"""
         try:
@@ -156,12 +185,22 @@ class MIDIHandler:
         try:
             midi_data = pretty_midi.PrettyMIDI(midi_file)
             tempo = MIDIHandler.estimate_tempo(midi_data)
+            
+            # Fix instrument name retrieval
+            instrument_names = []
+            for instrument in midi_data.instruments:
+                if not instrument.is_drum:
+                    # Use program number to get instrument name
+                    program = instrument.program
+                    instrument_name = pretty_midi.program_to_instrument_name(program)
+                    instrument_names.append(instrument_name)
+            
             return {
                 'length': round(midi_data.get_end_time(), 2),
                 'tempo': round(tempo, 2),
                 'time_signature': f"{midi_data.time_signature_changes[0].numerator}/{midi_data.time_signature_changes[0].denominator}" if midi_data.time_signature_changes else "4/4",
                 'key_signature': midi_data.key_signature_changes[0].key_number if midi_data.key_signature_changes else 0,
-                'instrument_names': [i.program_name for i in midi_data.instruments if not i.is_drum],
+                'instrument_names': instrument_names,
                 'total_notes': sum(len(i.notes) for i in midi_data.instruments)
             }
         except Exception as e:
