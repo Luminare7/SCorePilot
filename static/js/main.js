@@ -1,6 +1,48 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // ... previous code remains the same until line 46 ...
-    
+    const uploadForm = document.getElementById('uploadForm');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('file');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileList = document.getElementById('fileList');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const generateMusicForm = document.getElementById('generateMusicForm');
+    const generationResult = document.getElementById('generationResult');
+
+    // Initialize file upload handlers
+    if (dropZone) {
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        dropZone.addEventListener('click', () => fileInput.click());
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', handleFiles, false);
+    }
+
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) {
+                showError('Please select at least one file to upload.');
+                return;
+            }
+            loadingOverlay.classList.add('active');
+            uploadForm.submit();
+        });
+    }
+
     // Music Generation Form Handling
     if (generateMusicForm) {
         generateMusicForm.addEventListener('submit', async (e) => {
@@ -89,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Utility Functions remain the same...
+    // Utility Functions
     function preventDefaults(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -116,13 +158,13 @@ document.addEventListener('DOMContentLoaded', function() {
             fileInfo.classList.remove('d-none');
             fileList.innerHTML = files.map(file => `
                 <div class="file-item">
-                    <i class="fas fa-file-code"></i>
+                    <i class="fas fa-file-music me-2"></i>
                     ${file.name} (${formatFileSize(file.size)})
                 </div>
             `).join('');
         } else {
             fileInfo.classList.add('d-none');
-            fileList.innerHTML = 'No files selected';
+            fileList.innerHTML = '';
         }
     }
 
@@ -141,6 +183,9 @@ document.addEventListener('DOMContentLoaded', function() {
             <strong>Error:</strong> ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        generateMusicForm.appendChild(alertContainer);
+        uploadForm.appendChild(alertContainer);
+        setTimeout(() => {
+            alertContainer.remove();
+        }, 5000);
     }
 });
