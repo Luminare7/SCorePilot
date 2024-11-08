@@ -15,4 +15,3 @@ pillow
 python-magic
 reportlab
 tenacity
-werkzeug
