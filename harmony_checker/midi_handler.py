@@ -13,12 +13,7 @@ class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         try:
-            # Configure music21 environment
-            us = music21.environment.UserSettings()
-            us['musicxmlPath'] = 'musescore'  # Use MuseScore as fallback
-            us['directoryScratch'] = os.path.join(os.getcwd(), 'tmp')
-            
-            # Parse MIDI file
+            # Parse MIDI file with music21
             score = music21.converter.parse(midi_file)
             
             # Create output paths
@@ -29,19 +24,17 @@ class MIDIHandler:
             # Write MusicXML first
             score.write('musicxml', fp=xml_path)
             
-            # Try to create score visualization using music21's built-in methods
+            # Try to create score visualization
             try:
-                # Try direct PNG export first
-                score.write('musicxml.png', fp=score_path)
-            except Exception as e:
-                logger.warning(f"Direct PNG export failed: {str(e)}")
-                # Fallback to basic visualization
+                # Try direct visualization first
                 for part in score.parts:
                     part.plot('pianoroll', 
                              title=f'Piano Score - {base_name}',
                              saved=True,
                              filepath=score_path)
                     break
+            except Exception as e:
+                logger.warning(f"Score visualization failed: {str(e)}")
             
             return True, xml_path, "Successfully converted MIDI to MusicXML"
         except Exception as e:
