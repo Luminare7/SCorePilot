@@ -13,7 +13,7 @@ class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         try:
-            # Convert MIDI to score
+            # Convert MIDI to score using music21's built-in parser
             score = music21.converter.parse(midi_file)
             
             # Create output path
@@ -21,27 +21,22 @@ class MIDIHandler:
             xml_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
             
             # Write to MusicXML
-            score.write('musicxml', xml_path)
+            score.write('musicxml', fp=xml_path)
             
-            # Create piano score visualization
-            score.makeNotation()
+            # Try score visualization without Lilypond first
+            try:
+                score.write('musicxml.png', fp=os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png"))
+            except Exception as viz_error:
+                logger.warning(f"Score visualization failed, using alternative method: {str(viz_error)}")
+                # Fallback to basic visualization if Lilypond is not available
+                for part in score.parts:
+                    part.plot('pianoroll', 
+                             title=f'Piano Roll - {base_name}',
+                             saved=True,
+                             filepath=os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png"))
+                    break
             
-            # Add missing elements if needed
-            for part in score.parts:
-                if not part.recurse().getElementsByClass('Clef'):
-                    part.insert(0, music21.clef.TrebleClef())
-                if not part.recurse().getElementsByClass('TimeSignature'):
-                    part.insert(0, music21.meter.TimeSignature('4/4'))
-                if not part.recurse().getElementsByClass('KeySignature'):
-                    part.insert(0, music21.key.Key('C'))
-            
-            # Create visualization path
-            vis_path = os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png")
-            
-            # Save piano score visualization
-            score.write('lily.png', fp=vis_path)
-            
-            return True, xml_path, "Successfully converted MIDI to MusicXML with piano score"
+            return True, xml_path, "Successfully converted MIDI to MusicXML"
         except Exception as e:
             logger.error(f"Error converting MIDI to MusicXML: {str(e)}")
             return False, None, f"Failed to convert MIDI: {str(e)}"

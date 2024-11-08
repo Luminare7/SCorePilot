@@ -117,19 +117,20 @@ def analyze_file(file, filename: str) -> Optional[Dict]:
             midi_handler = MIDIHandler()
             # Convert to MusicXML first
             success, xml_path, message = midi_handler.midi_to_musicxml(filepath)
-            
             if success:
                 # Store the MusicXML path
                 result['musicxml_path'] = xml_path
                 
-                # Create piano roll visualization
+                # Create piano roll visualization first
                 piano_roll_path = os.path.join('static', 'visualizations', f'piano_roll_{os.path.splitext(filename)[0]}.png')
                 success, message = midi_handler.create_piano_roll(filepath, piano_roll_path)
                 if success:
                     result['piano_roll_path'] = f'visualizations/piano_roll_{os.path.splitext(filename)[0]}.png'
                 
-                # Add score visualization path from MusicXML conversion
-                result['visualization_path'] = f'visualizations/score_{os.path.splitext(filename)[0]}.png'
+                # Try to get score visualization
+                score_path = os.path.join('static', 'visualizations', f'score_{os.path.splitext(filename)[0]}.png')
+                if os.path.exists(score_path):
+                    result['visualization_path'] = f'visualizations/score_{os.path.splitext(filename)[0]}.png'
                 
                 # Get MIDI information
                 result['midi_info'] = midi_handler.get_midi_info(filepath)
