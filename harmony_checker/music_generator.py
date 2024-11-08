@@ -21,9 +21,27 @@ class MusicGenerator:
         try:
             if not content.strip().startswith('<?xml'):
                 return False
+                
             root = ET.fromstring(content)
-            return root.tag == 'score-partwise'
+            if root.tag != 'score-partwise':
+                return False
+                
+            # Check for required elements
+            if root.find('.//part-list') is None or root.find('.//part') is None:
+                return False
+                
+            # Parse with music21 to validate musical content
+            try:
+                music21.converter.parseData(content)
+                return True
+            except Exception as e:
+                logger.error(f"Music21 validation failed: {str(e)}")
+                return False
+                
         except ET.ParseError:
+            return False
+        except Exception as e:
+            logger.error(f"MusicXML validation error: {str(e)}")
             return False
 
     def convert_to_midi(self, musicxml_content: str) -> bytes:
@@ -60,7 +78,7 @@ class MusicGenerator:
                 max_tokens=2000,
                 presence_penalty=0.6,
                 frequency_penalty=0.6,
-                timeout=30  # Add timeout
+                timeout=30
             )
         except Exception as e:
             if isinstance(e, httpx.TimeoutException):
@@ -75,31 +93,43 @@ class MusicGenerator:
             if cache_key in self._cache:
                 return self._cache[cache_key]
                 
-            messages = [
-                {
-                    "role": "system",
-                    "content": '''You are a music composer that creates valid MusicXML content. Always respond with complete, valid MusicXML structure including:
+            system_prompt = '''You are a music composer that creates valid MusicXML content. Follow these rules:
+1. Always start with the XML declaration and DOCTYPE
+2. Use the following template structure:
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
-    <!-- Your music content here -->
+    <part-list>
+        <score-part id="P1">
+            <part-name>Music</part-name>
+        </score-part>
+    </part-list>
+    <part id="P1">
+        <!-- Your measures here -->
+    </part>
 </score-partwise>'''
-                },
-                {
-                    "role": "user", 
-                    "content": f"Generate a {style} piece in valid MusicXML format: {prompt}"
-                }
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Generate a {style} piece in valid MusicXML format: {prompt}"}
             ]
             
             try:
                 response = self._make_api_call(messages, temperature=0.7)
                 music_data = response.choices[0].message.content
                 
-                # Validate MusicXML
+                # Validate MusicXML with detailed error messages
                 if not self.validate_musicxml(music_data):
+                    error_msg = "Generated content is not in valid MusicXML format. "
+                    if not music_data.strip().startswith('<?xml'):
+                        error_msg += "Missing XML declaration."
+                    elif "score-partwise" not in music_data:
+                        error_msg += "Missing score-partwise element."
+                    elif "part-list" not in music_data:
+                        error_msg += "Missing part-list element."
                     return {
                         "success": False,
-                        "error": "Generated content is not in valid MusicXML format",
+                        "error": error_msg,
                         "error_type": "invalid_format"
                     }
                 
