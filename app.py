@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, flash, redirect, url_for, sen
 from werkzeug.utils import secure_filename
 from harmony_checker import HarmonyAnalyzer, HarmonyError
 from harmony_checker.report_generator import ReportGenerator
+from harmony_checker.music_generator import MusicGenerator
 import os
 import logging
 import io
@@ -49,6 +50,9 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
+
+# Initialize MusicGenerator
+music_generator = MusicGenerator()
 
 @contextmanager
 def safe_file_handler(filepath: str):
@@ -214,6 +218,56 @@ def validate_files():
         return jsonify({'valid': False, 'error': error_message}), 400
         
     return jsonify({'valid': True}), 200
+
+@app.route('/generate-music', methods=['POST'])
+def generate_music():
+    """Generate music using AI"""
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        style = data.get('style')
+        
+        if not prompt:
+            return jsonify({'error': 'No prompt provided'}), 400
+            
+        result = music_generator.generate_music(prompt, style)
+        
+        if not result['success']:
+            return jsonify({'error': result['error']}), 500
+            
+        # Store the generated music in the session
+        session['generated_music'] = result['music_data']
+        
+        return jsonify({
+            'success': True,
+            'message': 'Music generated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Music generation failed: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Failed to generate music'}), 500
+
+@app.route('/download-generated-music')
+def download_generated_music():
+    """Download the generated music file"""
+    try:
+        music_data = session.get('generated_music')
+        if not music_data:
+            flash('No generated music available. Please generate music first.', 'danger')
+            return redirect(url_for('index'))
+            
+        # Create a MIDI file from the generated data
+        return send_file(
+            io.BytesIO(music_data.encode()),
+            mimetype='audio/midi',
+            as_attachment=True,
+            download_name='generated_music.mid'
+        )
+        
+    except Exception as e:
+        logger.error(f"Music download failed: {str(e)}", exc_info=True)
+        flash('Error downloading generated music.', 'danger')
+        return redirect(url_for('index'))
 
 @app.route('/', methods=['GET', 'POST'])
 def index():

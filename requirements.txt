@@ -4,3 +4,4 @@ werkzeug==3.0.1
 Python-Magic==0.4.27
 reportlab==4.0.7
 Pillow==10.2.0
+openai
