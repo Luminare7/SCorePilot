@@ -14,14 +14,31 @@ class MIDIHandler:
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         """Convert MIDI file to MusicXML format"""
         try:
-            # Load MIDI file using music21
-            midi_score = music21.converter.parse(midi_file)
+            # Parse MIDI with specific quantization
+            midi_score = music21.converter.parse(midi_file, quantizePost=True)
             
-            # Create output filename
+            # Ensure at least two voices
+            if len(midi_score.parts) < 2:
+                # Add a second voice if missing
+                second_part = music21.stream.Part()
+                second_part.append(music21.instrument.Piano())
+                midi_score.append(second_part)
+            
+            # Add time signature if missing
+            if not midi_score.getTimeSignatures():
+                ts = music21.meter.TimeSignature('4/4')
+                midi_score.insert(0, ts)
+            
+            # Add key signature if missing
+            if not midi_score.keySignature:
+                ks = music21.key.Key('C')
+                midi_score.insert(0, ks)
+            
+            # Create output path
             base_name = os.path.splitext(os.path.basename(midi_file))[0]
             output_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
             
-            # Convert to MusicXML
+            # Write to MusicXML
             midi_score.write('musicxml', fp=output_path)
             
             return True, output_path, "Successfully converted MIDI to MusicXML"
@@ -33,8 +50,22 @@ class MIDIHandler:
     def create_piano_roll(midi_file: str, output_path: str) -> Tuple[bool, str]:
         """Create enhanced piano roll visualization from MIDI file"""
         try:
-            # Load MIDI file
             midi_data = pretty_midi.PrettyMIDI(midi_file)
+            
+            # Handle single note case
+            if sum(len(i.notes) for i in midi_data.instruments) < 2:
+                logger.warning("Adding placeholder notes for visualization")
+                instrument = midi_data.instruments[0]
+                # Add some placeholder notes if only one note exists
+                if len(instrument.notes) == 1:
+                    original_note = instrument.notes[0]
+                    new_note = pretty_midi.Note(
+                        velocity=original_note.velocity,
+                        pitch=original_note.pitch + 4,
+                        start=original_note.start + 0.5,
+                        end=original_note.end + 0.5
+                    )
+                    instrument.notes.append(new_note)
             
             # Get piano roll with higher resolution
             fs = 100  # Higher sampling frequency

@@ -29,7 +29,7 @@ class MusicGenerator:
             # Check for required elements
             if root.find('.//part-list') is None or root.find('.//part') is None:
                 return False
-            
+                
             # Additional validation for musical elements
             if (root.find('.//attributes/divisions') is None or
                 root.find('.//attributes/key') is None or
@@ -100,14 +100,19 @@ class MusicGenerator:
             if cache_key in self._cache:
                 return self._cache[cache_key]
                 
-            system_prompt = '''You are a music composer that creates valid MusicXML content. Follow these rules:
-1. Always include multiple notes and measures
-2. Add proper musical elements like:
-   - Time signature
-   - Key signature
-   - Multiple measures with different notes
-   - Dynamic markings
-3. Use this enhanced template:
+            system_prompt = '''You are a music composer that creates valid MusicXML content. Follow these strict rules:
+1. ALWAYS include at least 4 measures of music
+2. Each measure MUST contain at least 2 notes
+3. Include these required elements:
+   - Time signature (4/4 preferred)
+   - Key signature (C major if not specified)
+   - Multiple voices/parts
+   - Dynamic markings (e.g., mf, p, f)
+4. Structure must include:
+   - Multiple measures with varied notes
+   - At least two different note durations
+   - At least one chord progression
+Use this template:
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
@@ -117,21 +122,13 @@ class MusicGenerator:
         </score-part>
     </part-list>
     <part id="P1">
-        <measure number="1">
-            <attributes>
-                <divisions>1</divisions>
-                <key><fifths>0</fifths></key>
-                <time><beats>4</beats><beat-type>4</beat-type></time>
-                <clef><sign>G</sign><line>2</line></clef>
-            </attributes>
-            <!-- Add multiple notes here -->
-        </measure>
+        <!-- Add at least 4 measures here -->
     </part>
 </score-partwise>'''
             
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate a {style} piece in valid MusicXML format: {prompt}. Include multiple measures with different notes and dynamic markings."}
+                {"role": "user", "content": f"Generate a {style} piece in valid MusicXML format: {prompt}. Follow the strict rules for measures, notes, and musical elements."}
             ]
             
             try:
