@@ -133,3 +133,23 @@ h1, h2, h3, h4, h5, h6 {
 .content-spacing {
     margin-bottom: 1.5rem;
 }
+
+/* Print Styles */
+@media print {
+    /* Hide non-essential elements when printing */
+    nav, footer, .btn-download, .piano-roll {
+        display: none !important;
+    }
+    
+    /* Ensure score takes full page width */
+    .score-visualization {
+        width: 100% !important;
+        max-width: none !important;
+        page-break-inside: avoid;
+    }
+    
+    /* Add proper margins */
+    @page {
+        margin: 2cm;
+    }
+}

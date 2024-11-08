@@ -39,6 +39,7 @@
                                 </div>
                                 {% endif %}
 
+                                <!-- Analysis Results -->
                                 <div class="alert {% if result.report.total_errors > 0 %}alert-warning{% else %}alert-success{% endif %}">
                                     <h4 class="alert-heading">
                                         <i class="fas {% if result.report.total_errors > 0 %}fa-exclamation-triangle{% else %}fa-check-circle{% endif %} me-2"></i>
@@ -47,32 +48,30 @@
                                     <p class="mb-0">Total Errors Found: {{ result.report.total_errors }}</p>
                                 </div>
 
-                                {% if result.results %}
-                                    <!-- [Previous accordion code remains the same] -->
-                                {% else %}
-                                    <div class="alert alert-success">
-                                        <h4 class="alert-heading">
-                                            <i class="fas fa-check-circle me-2"></i>
-                                            Great news!
-                                        </h4>
-                                        <p>No errors were found in your score. The harmony analysis shows that your composition follows good musical practices.</p>
-                                    </div>
-                                {% endif %}
-
                                 <!-- Score Visualizations -->
                                 <div class="row mt-4">
                                     {% if result.visualization_path %}
                                     <div class="col-12 {% if result.piano_roll_path %}col-md-6{% endif %} mb-4">
-                                        <h4>Score Visualization</h4>
-                                        <img src="{{ url_for('static', filename=result.visualization_path) }}" 
-                                             alt="Musical score visualization" 
-                                             class="img-fluid score-image"
-                                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.classList.add('visualization-error');">
+                                        <div class="score-visualization">
+                                            <h4>Score Visualization</h4>
+                                            <img src="{{ url_for('static', filename=result.visualization_path) }}" 
+                                                 alt="Musical score visualization" 
+                                                 class="img-fluid score-image"
+                                                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/score-placeholder.png') }}'; this.classList.add('visualization-error');">
+                                            
+                                            <!-- Print Button -->
+                                            <div class="text-center mt-3">
+                                                <button onclick="window.print()" class="btn btn-primary">
+                                                    <i class="fas fa-print me-2"></i>
+                                                    Print Score
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                     {% endif %}
                                     
                                     {% if result.piano_roll_path %}
-                                    <div class="col-12 {% if result.visualization_path %}col-md-6{% endif %} mb-4">
+                                    <div class="col-12 {% if result.visualization_path %}col-md-6{% endif %} mb-4 piano-roll">
                                         <h4>Piano Roll View</h4>
                                         <img src="{{ url_for('static', filename=result.piano_roll_path) }}" 
                                              alt="Piano roll visualization" 

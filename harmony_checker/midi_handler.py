@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
-        """Convert MIDI file to MusicXML format"""
+        """Convert MIDI file to MusicXML format with enhanced musical elements"""
         try:
             # Parse MIDI with specific quantization and enhanced settings
             midi_score = music21.converter.parse(midi_file, quantizePost=True)
@@ -40,17 +40,23 @@ class MIDIHandler:
             if not midi_score.keySignature:
                 ks = music21.key.Key('C')
                 midi_score.insert(0, ks)
-                
+            
             # Add tempo marking if missing
             if not midi_score.metronomeMarkBoundaries():
                 mm = music21.tempo.MetronomeMark(number=120)
                 midi_score.insert(0, mm)
             
+            # Add dynamics if missing
+            for part in midi_score.parts:
+                if not part.recurse().getElementsByClass('Dynamic'):
+                    part.insert(0, music21.dynamics.Dynamic('mf'))
+            
             # Create output path
             base_name = os.path.splitext(os.path.basename(midi_file))[0]
             output_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
             
-            # Write to MusicXML with proper settings
+            # Configure layout and write to MusicXML
+            midi_score.makeNotation()
             midi_score.write('musicxml', fp=output_path)
             
             return True, output_path, "Successfully converted MIDI to MusicXML"
@@ -64,7 +70,7 @@ class MIDIHandler:
             # Convert MIDI to music21 stream
             score = music21.converter.parse(midi_file)
             
-            # Create piano score layout
+            # Enhance score layout for classical notation
             for part in score.parts:
                 # Set proper clef
                 if not part.recurse().getElementsByClass('Clef'):
@@ -73,16 +79,23 @@ class MIDIHandler:
                 # Add measure numbers
                 for measure in part.getElementsByClass('Measure'):
                     measure.number = measure.measureNumber
+                
+                # Add dynamics if missing
+                if not part.recurse().getElementsByClass('Dynamic'):
+                    part.insert(0, music21.dynamics.Dynamic('mf'))
             
-            # Add title
-            title = os.path.splitext(os.path.basename(midi_file))[0]
+            # Add title and composer
             score.metadata = music21.metadata.Metadata()
-            score.metadata.title = title
+            score.metadata.title = os.path.splitext(os.path.basename(midi_file))[0]
+            score.metadata.composer = 'Generated Score'
             
-            # Write to PNG
-            score.write('lily.png', fp=output_path)
+            # Configure layout for printing
+            score.makeNotation()
             
-            return True, "Successfully created score visualization"
+            # Write to PNG with high quality
+            score.write('lily.png', fp=output_path, dpi=300)
+            
+            return True, "Successfully created printable score visualization"
         except Exception as e:
             logger.error(f"Error creating score visualization: {str(e)}")
             return False, f"Failed to create score visualization: {str(e)}"
