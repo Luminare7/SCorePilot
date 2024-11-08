@@ -13,27 +13,34 @@ class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
         try:
-            # Convert MIDI to score using music21's built-in parser
+            # Configure music21 environment
+            us = music21.environment.UserSettings()
+            us['musicxmlPath'] = 'musescore'  # Use MuseScore as fallback
+            us['directoryScratch'] = os.path.join(os.getcwd(), 'tmp')
+            
+            # Parse MIDI file
             score = music21.converter.parse(midi_file)
             
-            # Create output path
+            # Create output paths
             base_name = os.path.splitext(os.path.basename(midi_file))[0]
-            xml_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
+            xml_path = os.path.join('static', 'visualizations', f"{base_name}.musicxml")
+            score_path = os.path.join('static', 'visualizations', f"{base_name}_score.png")
             
-            # Write to MusicXML
+            # Write MusicXML first
             score.write('musicxml', fp=xml_path)
             
-            # Try score visualization without Lilypond first
+            # Try to create score visualization using music21's built-in methods
             try:
-                score.write('musicxml.png', fp=os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png"))
-            except Exception as viz_error:
-                logger.warning(f"Score visualization failed, using alternative method: {str(viz_error)}")
-                # Fallback to basic visualization if Lilypond is not available
+                # Try direct PNG export first
+                score.write('musicxml.png', fp=score_path)
+            except Exception as e:
+                logger.warning(f"Direct PNG export failed: {str(e)}")
+                # Fallback to basic visualization
                 for part in score.parts:
                     part.plot('pianoroll', 
-                             title=f'Piano Roll - {base_name}',
+                             title=f'Piano Score - {base_name}',
                              saved=True,
-                             filepath=os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png"))
+                             filepath=score_path)
                     break
             
             return True, xml_path, "Successfully converted MIDI to MusicXML"
