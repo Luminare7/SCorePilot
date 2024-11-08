@@ -6,3 +6,13 @@ reportlab==4.0.7
 Pillow==10.2.0
 openai
 tenacity==8.2.3
+midiutil
+pretty-midi
+flask
+matplotlib
+music21
+pillow
+python-magic
+reportlab
+tenacity
+werkzeug
