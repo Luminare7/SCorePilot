@@ -1,0 +1,110 @@
+from flask import Flask, request, send_file, render_template_string
+from music21 import converter, environment
+import os
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+
+# Configurazione base
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Template HTML semplice
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MIDI to MusicXML Converter</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+        }
+        .upload-form {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>MIDI to MusicXML Converter</h1>
+    <div class="upload-form">
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".mid,.midi" required>
+            <br><br>
+            <input type="submit" value="Convert" class="button">
+        </form>
+    </div>
+    {% if error %}
+    <p style="color: red;">{{ error }}</p>
+    {% endif %}
+</body>
+</html>
+'''
+
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return render_template_string(HTML_TEMPLATE, error='No file part')
+        
+        file = request.files['file']
+        if file.filename == '':
+            return render_template_string(HTML_TEMPLATE, error='No selected file')
+        
+        if file and file.filename.endswith(('.mid', '.midi')):
+            try:
+                # Salva il file MIDI
+                filename = secure_filename(file.filename)
+                midi_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(midi_path)
+                
+                # Converti in MusicXML
+                score = converter.parse(midi_path)
+                xml_path = os.path.join(app.config['UPLOAD_FOLDER'], 
+                                      filename.rsplit('.', 1)[0] + '.musicxml')
+                score.write('musicxml', xml_path)
+                
+                # Pulisci il file MIDI
+                os.remove(midi_path)
+                
+                # Invia il file XML
+                return_data = send_file(
+                    xml_path,
+                    as_attachment=True,
+                    download_name=os.path.basename(xml_path),
+                    mimetype='application/xml'
+                )
+                
+                # Pulisci il file XML dopo l'invio
+                os.remove(xml_path)
+                
+                return return_data
+                
+            except Exception as e:
+                return render_template_string(HTML_TEMPLATE, 
+                                           error=f'Error during conversion: {str(e)}')
+        else:
+            return render_template_string(HTML_TEMPLATE, 
+                                       error='Invalid file type. Please upload a MIDI file.')
+    
+    return render_template_string(HTML_TEMPLATE, error=None)
+
+if __name__ == '__main__':
+    app.run(debug=True)

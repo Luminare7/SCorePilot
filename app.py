@@ -36,7 +36,7 @@ ALLOWED_MIME_TYPES = {
     'audio/x-midi'
 }
 
-# Initialize directories with proper error handling
+# Initialize directories
 required_dirs = [UPLOAD_FOLDER, os.path.join('static', 'visualizations')]
 for directory in required_dirs:
     try:
@@ -48,32 +48,8 @@ for directory in required_dirs:
 
 app.config.update(
     UPLOAD_FOLDER=UPLOAD_FOLDER,
-    MAX_CONTENT_LENGTH=MAX_FILE_SIZE,
-    SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax'
+    MAX_CONTENT_LENGTH=MAX_FILE_SIZE
 )
-
-# Initialize MusicGenerator
-music_generator = MusicGenerator()
-
-def cleanup_visualizations() -> None:
-    """Clean up visualization files"""
-    vis_dir = os.path.join('static', 'visualizations')
-    try:
-        for file in os.listdir(vis_dir):
-            file_path = os.path.join(vis_dir, file)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-        logger.debug("Visualization cleanup completed")
-    except Exception as e:
-        logger.error(f"Visualization cleanup failed: {str(e)}")
-
-@app.route('/cleanup')
-def cleanup():
-    """Endpoint for cleaning up visualization files"""
-    cleanup_visualizations()
-    return '', 204
 
 def allowed_file(filename: str) -> bool:
     """Check if file extension is allowed"""
@@ -131,35 +107,38 @@ def validate_musicxml_structure(file_path: str) -> Tuple[bool, str]:
 def analyze_file(file, filename: str) -> Optional[Dict]:
     """Analyze a single file and return results"""
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    result = {}
     
     try:
-        # Validate file type and size
-        is_valid, error_message = validate_file_type_and_size(file)
-        if not is_valid:
-            raise ValueError(error_message)
-            
         file.save(filepath)
         
         # Handle MIDI files
         if filename.lower().endswith(('.mid', '.midi')):
             midi_handler = MIDIHandler()
-            success, musicxml_path, message = midi_handler.midi_to_musicxml(filepath)
+            # Convert to MusicXML first
+            success, xml_path, message = midi_handler.midi_to_musicxml(filepath)
             
-            if not success:
-                raise ValueError(f"MIDI conversion failed: {message}")
+            if success:
+                # Store the MusicXML path
+                result['musicxml_path'] = xml_path
                 
-            # Create piano roll visualization
-            piano_roll_path = os.path.join('static', 'visualizations', f'piano_roll_{os.path.splitext(filename)[0]}.png')
-            success, message = midi_handler.create_piano_roll(filepath, piano_roll_path)
-            
-            if not success:
-                logger.warning(f"Piano roll creation failed: {message}")
-            
-            # Get MIDI information
-            midi_info = midi_handler.get_midi_info(filepath)
-            
-            # Update filepath to use converted MusicXML
-            filepath = musicxml_path
+                # Create piano roll visualization
+                piano_roll_path = os.path.join('static', 'visualizations', f'piano_roll_{os.path.splitext(filename)[0]}.png')
+                success, message = midi_handler.create_piano_roll(filepath, piano_roll_path)
+                if success:
+                    result['piano_roll_path'] = f'visualizations/piano_roll_{os.path.splitext(filename)[0]}.png'
+                
+                # Add score visualization path from MusicXML conversion
+                result['visualization_path'] = f'visualizations/score_{os.path.splitext(filename)[0]}.png'
+                
+                # Get MIDI information
+                result['midi_info'] = midi_handler.get_midi_info(filepath)
+                
+                # Update filepath to use converted MusicXML
+                filepath = xml_path
+            else:
+                logger.warning(f"MusicXML conversion failed: {message}")
+                return None
         
         # Validate MusicXML structure
         is_valid, error_message = validate_musicxml_structure(filepath)
@@ -190,26 +169,27 @@ def analyze_file(file, filename: str) -> Optional[Dict]:
                 'measures_analyzed': len(analyzer.score.measures(0, None)) if analyzer.score else 0,
                 'key': str(analyzer.key) if analyzer.key else 'Unknown',
                 'total_voices': len(analyzer.score.parts) if analyzer.score else 0,
-                'midi_info': midi_info if 'midi_info' in locals() else None
+                'midi_info': result.get('midi_info')
             }
         }
 
+        # Store analysis results in session
         session['last_analysis'] = {
             'errors': error_dicts,
             'statistics': report['statistics']
         }
 
-        result = {
+        return {
             'filename': filename,
             'results': error_dicts,
             'report': report,
-            'visualization_path': analyzer.visualization_path,
-            'piano_roll_path': f'visualizations/piano_roll_{os.path.splitext(filename)[0]}.png' if 'piano_roll_path' in locals() else None
+            'visualization_path': result.get('visualization_path'),
+            'piano_roll_path': result.get('piano_roll_path'),
+            'musicxml_path': result.get('musicxml_path')
         }
 
-        return result
     finally:
-        # Clean up the uploaded file
+        # Clean up temporary files
         if os.path.exists(filepath):
             try:
                 os.remove(filepath)
@@ -220,11 +200,7 @@ def analyze_file(file, filename: str) -> Optional[Dict]:
 def index():
     """Main route for file upload and analysis"""
     if request.method == 'GET':
-        cleanup_visualizations()
         return render_template('index.html')
-
-    logger.debug("Processing file upload request")
-    cleanup_visualizations()
 
     if 'file' not in request.files:
         flash('No file selected', 'danger')
@@ -243,6 +219,12 @@ def index():
             continue
             
         try:
+            # Validate file type and size
+            is_valid, error_message = validate_file_type_and_size(file)
+            if not is_valid:
+                flash(f'Error with {file.filename}: {error_message}', 'warning')
+                continue
+                
             filename = secure_filename(file.filename)
             result = analyze_file(file, filename)
             if result:
@@ -263,60 +245,19 @@ def index():
         has_errors=any(result['results'] for result in analysis_results)
     )
 
-@app.route('/generate-music', methods=['POST'])
-def generate_music():
-    """Generate music using AI"""
+@app.route('/download_musicxml/<path:filename>')
+def download_musicxml(filename):
+    """Download converted MusicXML file"""
     try:
-        data = request.get_json()
-        prompt = data.get('prompt', '')
-        style = data.get('style')
-        
-        if not prompt:
-            return jsonify({'error': 'No prompt provided'}), 400
-            
-        result = music_generator.generate_music(prompt, style)
-        
-        if not result['success']:
-            return jsonify({'error': result['error']}), 500
-            
-        # Store the generated music in the session
-        session['generated_music'] = result['music_data']
-        
-        return jsonify({
-            'success': True,
-            'message': 'Music generated successfully'
-        })
-        
-    except Exception as e:
-        logger.error(f"Music generation failed: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Failed to generate music'}), 500
-
-@app.route('/download-generated-music')
-def download_generated_music():
-    """Download the generated music file"""
-    try:
-        music_data = session.get('generated_music')
-        if not music_data:
-            flash('No generated music available. Please generate music first.', 'danger')
-            return redirect(url_for('index'))
-            
-        # If music_data is already bytes, use it directly
-        if isinstance(music_data, bytes):
-            data = music_data
-        else:
-            # If it's a string, encode it
-            data = music_data.encode()
-            
         return send_file(
-            io.BytesIO(data),
-            mimetype='audio/midi',
+            filename,
             as_attachment=True,
-            download_name='generated_music.mid'
+            download_name=os.path.basename(filename),
+            mimetype='application/xml'
         )
-        
     except Exception as e:
-        logger.error(f"Music download failed: {str(e)}")
-        flash('Error downloading generated music.', 'danger')
+        logger.error(f"Error downloading MusicXML: {str(e)}")
+        flash('Error downloading MusicXML file', 'danger')
         return redirect(url_for('index'))
 
 @app.route('/download_pdf')

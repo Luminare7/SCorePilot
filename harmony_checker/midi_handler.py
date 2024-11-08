@@ -12,115 +12,45 @@ logger = logging.getLogger(__name__)
 class MIDIHandler:
     @staticmethod
     def midi_to_musicxml(midi_file: str) -> Tuple[bool, Optional[str], str]:
-        """Convert MIDI file to MusicXML format with enhanced musical elements"""
         try:
-            # Parse MIDI with specific quantization and enhanced settings
-            midi_score = music21.converter.parse(midi_file, quantizePost=True)
-            
-            # Ensure proper musical structure
-            if len(midi_score.parts) < 2:
-                # Create a more meaningful second part
-                second_part = music21.stream.Part()
-                second_part.append(music21.instrument.Piano())
-                
-                # Copy notes from first part and transpose them
-                if midi_score.parts and len(midi_score.parts[0].pitches) > 0:
-                    original_part = midi_score.parts[0]
-                    for note in original_part.recurse().notes:
-                        new_note = note.transpose(-12)  # Transpose down one octave
-                        second_part.append(new_note)
-                
-                midi_score.append(second_part)
-            
-            # Add musical elements if missing
-            if not midi_score.getTimeSignatures():
-                ts = music21.meter.TimeSignature('4/4')
-                midi_score.insert(0, ts)
-            
-            if not midi_score.keySignature:
-                ks = music21.key.Key('C')
-                midi_score.insert(0, ks)
-            
-            # Add tempo marking if missing
-            if not midi_score.metronomeMarkBoundaries():
-                mm = music21.tempo.MetronomeMark(number=120)
-                midi_score.insert(0, mm)
-            
-            # Add dynamics if missing
-            for part in midi_score.parts:
-                if not part.recurse().getElementsByClass('Dynamic'):
-                    part.insert(0, music21.dynamics.Dynamic('mf'))
+            # Convert MIDI to score
+            score = music21.converter.parse(midi_file)
             
             # Create output path
             base_name = os.path.splitext(os.path.basename(midi_file))[0]
-            output_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
+            xml_path = os.path.join(os.path.dirname(midi_file), f"{base_name}.musicxml")
             
-            # Configure layout and write to MusicXML
-            midi_score.makeNotation()
-            midi_score.write('musicxml', fp=output_path)
+            # Write to MusicXML
+            score.write('musicxml', xml_path)
             
-            return True, output_path, "Successfully converted MIDI to MusicXML"
-        except Exception as e:
-            logger.error(f"Error converting MIDI to MusicXML: {str(e)}")
-            return False, None, f"Failed to convert MIDI: {str(e)}"
-
-    @staticmethod
-    def create_score_visualization(midi_file: str, output_path: str) -> Tuple[bool, str]:
-        try:
-            # Convert MIDI to music21 stream
-            score = music21.converter.parse(midi_file)
-            
-            # Configure score layout
+            # Create piano score visualization
             score.makeNotation()
             
-            # Set page layout
-            for p in score.parts:
-                p.insert(0, music21.layout.StaffLayout(staffLines=5))
-                
-            # Add proper clefs and time signatures
+            # Add missing elements if needed
             for part in score.parts:
                 if not part.recurse().getElementsByClass('Clef'):
                     part.insert(0, music21.clef.TrebleClef())
                 if not part.recurse().getElementsByClass('TimeSignature'):
                     part.insert(0, music21.meter.TimeSignature('4/4'))
+                if not part.recurse().getElementsByClass('KeySignature'):
+                    part.insert(0, music21.key.Key('C'))
             
-            # Configure LilyPond settings for better output
-            settings = {
-                'papersize': 'a4',
-                'line-width': 180,
-                'staff-size': 20,
-                'page-limit': None
-            }
+            # Create visualization path
+            vis_path = os.path.join(os.path.dirname(midi_file), f"{base_name}_score.png")
             
-            # Write score using LilyPond backend
-            score.write('lily.png', fp=output_path, **settings)
+            # Save piano score visualization
+            score.write('lily.png', fp=vis_path)
             
-            return True, "Successfully created classical score visualization"
+            return True, xml_path, "Successfully converted MIDI to MusicXML with piano score"
         except Exception as e:
-            logger.error(f"Error creating score visualization: {str(e)}")
-            return False, f"Failed to create score visualization: {str(e)}"
+            logger.error(f"Error converting MIDI to MusicXML: {str(e)}")
+            return False, None, f"Failed to convert MIDI: {str(e)}"
 
     @staticmethod
     def create_piano_roll(midi_file: str, output_path: str) -> Tuple[bool, str]:
         """Create enhanced piano roll visualization from MIDI file"""
         try:
             midi_data = pretty_midi.PrettyMIDI(midi_file)
-            
-            # Handle single note case with harmonizing notes
-            if sum(len(i.notes) for i in midi_data.instruments) < 2:
-                logger.warning("Adding reference notes for visualization")
-                instrument = midi_data.instruments[0]
-                if len(instrument.notes) == 1:
-                    original_note = instrument.notes[0]
-                    # Add harmonizing notes
-                    for interval in [4, 7]:  # Add third and fifth
-                        new_note = pretty_midi.Note(
-                            velocity=original_note.velocity,
-                            pitch=original_note.pitch + interval,
-                            start=original_note.start,
-                            end=original_note.end
-                        )
-                        instrument.notes.append(new_note)
             
             # Get piano roll with higher resolution
             fs = 100  # Higher sampling frequency
@@ -159,9 +89,8 @@ class MIDIHandler:
             y_labels = [pretty_midi.note_number_to_name(n) for n in y_ticks]
             plt.yticks(y_ticks, y_labels)
             
-            # Add title with song information
-            title = "Piano Roll Visualization"
-            plt.title(title)
+            # Add title
+            plt.title("Piano Roll Visualization")
             
             # Adjust layout to prevent label cutoff
             plt.tight_layout()
@@ -171,7 +100,7 @@ class MIDIHandler:
                        facecolor='white', edgecolor='none')
             plt.close()
             
-            return True, "Successfully created enhanced piano roll visualization"
+            return True, "Successfully created piano roll visualization"
         except Exception as e:
             logger.error(f"Error creating piano roll: {str(e)}")
             return False, f"Failed to create piano roll: {str(e)}"
@@ -182,11 +111,10 @@ class MIDIHandler:
         try:
             midi_data = pretty_midi.PrettyMIDI(midi_file)
             
-            # Fix instrument name retrieval
+            # Get instrument names
             instrument_names = []
             for instrument in midi_data.instruments:
                 if not instrument.is_drum:
-                    # Use program number to get instrument name
                     program = instrument.program
                     instrument_name = pretty_midi.program_to_instrument_name(program)
                     instrument_names.append(instrument_name)
