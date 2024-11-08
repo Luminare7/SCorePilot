@@ -29,6 +29,13 @@ class MusicGenerator:
             # Check for required elements
             if root.find('.//part-list') is None or root.find('.//part') is None:
                 return False
+            
+            # Additional validation for musical elements
+            if (root.find('.//attributes/divisions') is None or
+                root.find('.//attributes/key') is None or
+                root.find('.//attributes/time') is None or
+                root.find('.//attributes/clef') is None):
+                return False
                 
             # Parse with music21 to validate musical content
             try:
@@ -94,8 +101,13 @@ class MusicGenerator:
                 return self._cache[cache_key]
                 
             system_prompt = '''You are a music composer that creates valid MusicXML content. Follow these rules:
-1. Always start with the XML declaration and DOCTYPE
-2. Use the following template structure:
+1. Always include multiple notes and measures
+2. Add proper musical elements like:
+   - Time signature
+   - Key signature
+   - Multiple measures with different notes
+   - Dynamic markings
+3. Use this enhanced template:
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
@@ -105,13 +117,21 @@ class MusicGenerator:
         </score-part>
     </part-list>
     <part id="P1">
-        <!-- Your measures here -->
+        <measure number="1">
+            <attributes>
+                <divisions>1</divisions>
+                <key><fifths>0</fifths></key>
+                <time><beats>4</beats><beat-type>4</beat-type></time>
+                <clef><sign>G</sign><line>2</line></clef>
+            </attributes>
+            <!-- Add multiple notes here -->
+        </measure>
     </part>
 </score-partwise>'''
             
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate a {style} piece in valid MusicXML format: {prompt}"}
+                {"role": "user", "content": f"Generate a {style} piece in valid MusicXML format: {prompt}. Include multiple measures with different notes and dynamic markings."}
             ]
             
             try:
@@ -127,6 +147,8 @@ class MusicGenerator:
                         error_msg += "Missing score-partwise element."
                     elif "part-list" not in music_data:
                         error_msg += "Missing part-list element."
+                    elif "attributes" not in music_data:
+                        error_msg += "Missing required musical attributes."
                     return {
                         "success": False,
                         "error": error_msg,

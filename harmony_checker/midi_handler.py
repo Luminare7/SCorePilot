@@ -3,6 +3,9 @@ import pretty_midi
 import os
 from typing import Optional, Tuple
 import logging
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 logger = logging.getLogger(__name__)
 
@@ -28,45 +31,80 @@ class MIDIHandler:
 
     @staticmethod
     def create_piano_roll(midi_file: str, output_path: str) -> Tuple[bool, str]:
-        """Create piano roll visualization from MIDI file"""
+        """Create enhanced piano roll visualization from MIDI file"""
         try:
             # Load MIDI file
             midi_data = pretty_midi.PrettyMIDI(midi_file)
             
-            # Get piano roll
-            piano_roll = midi_data.get_piano_roll()
+            # Get piano roll with higher resolution
+            fs = 100  # Higher sampling frequency
+            piano_roll = midi_data.get_piano_roll(fs=fs)
             
-            import matplotlib.pyplot as plt
-            import numpy as np
+            # Create custom colormap for better visibility
+            colors = [(0.95, 0.95, 0.95), (0.2, 0.4, 0.8), (0.1, 0.2, 0.5)]  # Light blue to dark blue
+            cmap = LinearSegmentedColormap.from_list('custom_blues', colors)
             
-            # Create figure
-            plt.figure(figsize=(12, 8))
-            plt.imshow(piano_roll, aspect='auto', origin='lower', cmap='Blues')
-            plt.colorbar(label='Velocity')
-            plt.ylabel('Pitch')
-            plt.xlabel('Time (frames)')
-            plt.title('Piano Roll Visualization')
+            # Create figure with larger size and higher DPI
+            plt.figure(figsize=(15, 10), dpi=300)
             
-            # Save figure
-            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            # Plot piano roll with enhanced visualization
+            plt.imshow(piano_roll, aspect='auto', origin='lower', 
+                      cmap=cmap, interpolation='nearest')
+            
+            # Add colorbar with proper label
+            cbar = plt.colorbar(label='Velocity')
+            cbar.ax.tick_params(labelsize=10)
+            
+            # Customize axis labels and ticks
+            plt.ylabel('MIDI Note Number')
+            plt.xlabel('Time (seconds)')
+            
+            # Add grid for better readability
+            plt.grid(True, alpha=0.3, linestyle='--')
+            
+            # Calculate time axis ticks
+            total_time = midi_data.get_end_time()
+            x_ticks = np.linspace(0, piano_roll.shape[1], num=10)
+            x_labels = [f"{(t/fs):.1f}" for t in x_ticks]
+            plt.xticks(x_ticks, x_labels)
+            
+            # Add note number labels
+            y_ticks = np.arange(0, 128, 12)
+            y_labels = [pretty_midi.note_number_to_name(n) for n in y_ticks]
+            plt.yticks(y_ticks, y_labels)
+            
+            # Add title with song information
+            title = f"Piano Roll Visualization\nTempo: {int(midi_data.estimate_tempo())} BPM"
+            if midi_data.time_signature_changes:
+                ts = midi_data.time_signature_changes[0]
+                title += f"\nTime Signature: {ts.numerator}/{ts.denominator}"
+            plt.title(title)
+            
+            # Adjust layout to prevent label cutoff
+            plt.tight_layout()
+            
+            # Save figure with high quality
+            plt.savefig(output_path, dpi=300, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
             plt.close()
             
-            return True, "Successfully created piano roll visualization"
+            return True, "Successfully created enhanced piano roll visualization"
         except Exception as e:
             logger.error(f"Error creating piano roll: {str(e)}")
             return False, f"Failed to create piano roll: {str(e)}"
 
     @staticmethod
     def get_midi_info(midi_file: str) -> dict:
-        """Get basic information about MIDI file"""
+        """Get detailed information about MIDI file"""
         try:
             midi_data = pretty_midi.PrettyMIDI(midi_file)
             return {
                 'length': round(midi_data.get_end_time(), 2),
                 'tempo': round(midi_data.estimate_tempo(), 2),
-                'time_signature': midi_data.time_signature_changes[0] if midi_data.time_signature_changes else None,
-                'key_signature': midi_data.key_signature_changes[0] if midi_data.key_signature_changes else None,
-                'instrument_names': [i.program_name for i in midi_data.instruments if not i.is_drum]
+                'time_signature': f"{midi_data.time_signature_changes[0].numerator}/{midi_data.time_signature_changes[0].denominator}" if midi_data.time_signature_changes else "4/4",
+                'key_signature': midi_data.key_signature_changes[0].key_number if midi_data.key_signature_changes else 0,
+                'instrument_names': [i.program_name for i in midi_data.instruments if not i.is_drum],
+                'total_notes': sum(len(i.notes) for i in midi_data.instruments)
             }
         except Exception as e:
             logger.error(f"Error getting MIDI info: {str(e)}")
