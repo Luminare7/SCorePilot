@@ -1,18 +1,54 @@
 import os
 import music21
+import tempfile
+import xml.etree.ElementTree as ET
 from openai import OpenAI
+import httpx
 from typing import Dict, Optional
 import time
 from tenacity import retry, stop_after_attempt, wait_exponential
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MusicGenerator:
     def __init__(self):
         self.client = OpenAI()
         self._cache = {}  # Simple memory cache
         
+    def validate_musicxml(self, content: str) -> bool:
+        """Validate if content is valid MusicXML"""
+        try:
+            if not content.strip().startswith('<?xml'):
+                return False
+            root = ET.fromstring(content)
+            return root.tag == 'score-partwise'
+        except ET.ParseError:
+            return False
+
+    def convert_to_midi(self, musicxml_content: str) -> bytes:
+        """Convert MusicXML content to MIDI format"""
+        try:
+            # Convert MusicXML string to music21 stream
+            stream = music21.converter.parse(musicxml_content)
+            
+            # Create temporary files
+            with tempfile.NamedTemporaryFile(suffix='.mid', delete=False) as tmp:
+                # Write MIDI file
+                stream.write('midi', tmp.name)
+                # Read the MIDI data
+                with open(tmp.name, 'rb') as f:
+                    midi_data = f.read()
+                # Clean up
+                os.unlink(tmp.name)
+            return midi_data
+        except Exception as e:
+            logger.error(f"MIDI conversion failed: {str(e)}")
+            raise
+
     @retry(
-        stop=stop_after_attempt(5),  # Increase max attempts
-        wait=wait_exponential(multiplier=2, min=10, max=60),  # Longer waits
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=10, max=60),
         reraise=True
     )
     def _make_api_call(self, messages, temperature):
@@ -21,19 +57,17 @@ class MusicGenerator:
                 model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=temperature,
-                max_tokens=1000,  # Reduce tokens to avoid rate limits
+                max_tokens=2000,
                 presence_penalty=0.6,
-                frequency_penalty=0.6
+                frequency_penalty=0.6,
+                timeout=30  # Add timeout
             )
         except Exception as e:
-            if "rate limits exceeded" in str(e).lower():
-                time.sleep(30)  # Longer delay for rate limits
-                raise
-            elif "network" in str(e).lower():
-                time.sleep(10)  # Longer delay for network issues
-                raise
-            else:
-                raise
+            if isinstance(e, httpx.TimeoutException):
+                raise ValueError("Request timed out. Please try again.")
+            elif isinstance(e, httpx.NetworkError):
+                raise ValueError("Network error occurred. Please check your connection.")
+            raise
 
     def generate_music(self, prompt: str, style: Optional[str] = None) -> Dict:
         try:
@@ -41,14 +75,20 @@ class MusicGenerator:
             if cache_key in self._cache:
                 return self._cache[cache_key]
                 
-            complete_prompt = f"Generate a {style} piece of music: {prompt}" if style else prompt
-            
             messages = [
                 {
                     "role": "system",
-                    "content": "You are a music composer assistant. Create a MusicXML score with these rules:\n1. Use only basic notations\n2. Keep the length reasonable\n3. Focus on melody and harmony\n4. Include proper time and key signatures"
+                    "content": '''You are a music composer that creates valid MusicXML content. Always respond with complete, valid MusicXML structure including:
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+    <!-- Your music content here -->
+</score-partwise>'''
                 },
-                {"role": "user", "content": complete_prompt}
+                {
+                    "role": "user", 
+                    "content": f"Generate a {style} piece in valid MusicXML format: {prompt}"
+                }
             ]
             
             try:
@@ -56,17 +96,28 @@ class MusicGenerator:
                 music_data = response.choices[0].message.content
                 
                 # Validate MusicXML
-                if not (music_data.startswith('<?xml') or music_data.startswith('<score-partwise>')):
+                if not self.validate_musicxml(music_data):
                     return {
                         "success": False,
                         "error": "Generated content is not in valid MusicXML format",
                         "error_type": "invalid_format"
                     }
                 
+                # Convert to MIDI
+                try:
+                    midi_data = self.convert_to_midi(music_data)
+                except Exception as e:
+                    logger.error(f"MIDI conversion failed: {str(e)}")
+                    return {
+                        "success": False,
+                        "error": "Failed to convert music to MIDI format",
+                        "error_type": "conversion_error"
+                    }
+                
                 result = {
                     "success": True,
-                    "music_data": music_data,
-                    "format": "musicxml"
+                    "music_data": midi_data,
+                    "format": "midi"
                 }
                 
                 self._cache[cache_key] = result
@@ -85,6 +136,12 @@ class MusicGenerator:
                         "success": False,
                         "error": "Network error occurred. Please check your connection and try again.",
                         "error_type": "network_error"
+                    }
+                elif "timeout" in error_message:
+                    return {
+                        "success": False,
+                        "error": "Request timed out. Please try again.",
+                        "error_type": "timeout"
                     }
                 else:
                     return {
